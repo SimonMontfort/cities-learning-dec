@@ -172,10 +172,10 @@ def build_autoencoder(hp):
     The decoder mirrors the encoder structure to reconstruct the input.
     """
     input_dim = cities_clean_scaled.shape[1]
-    encoding_dim = hp.Int('encoding_dim', min_value=2, max_value=5, step=1)
+    encoding_dim = hp.Int('encoding_dim', min_value=2, max_value=4, step=1)
     reg = l2(hp.Float('l2_reg', min_value=1e-6, max_value=1e-2, sampling='log'))
 
-    units1 = hp.Int('units1', 16, 98, step=16)
+    units1 = hp.Int('units1', 32, 96, step=16)
     units2 = hp.Int('units2', 16, 32, step=8)
 
     input_layer = layers.Input(shape=(input_dim,))
@@ -222,8 +222,9 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
     tuner = kt.Hyperband(
         build_autoencoder,
         objective='val_loss',
-        max_epochs=5,
+        max_epochs=30,
         factor=3,
+        executions_per_trial=2,
         directory=os.path.join('clustering_models', 'hyperband', f'run_{run_id}'),
         project_name='DEC_model_tuning'
     )
@@ -234,7 +235,7 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
 
     tuner.search(
         noisy_input, cities_clean_scaled,
-        epochs=10,
+        epochs=5,
         batch_size=128,
         validation_split=0.2,
         callbacks=[callbacks.EarlyStopping(monitor='val_loss', patience=10)],
@@ -455,7 +456,7 @@ def flatten_performance_scores(results):
 
 if __name__ == '__main__':
     cluster_range = range(3,8)
-    n_runs = 50
+    n_runs = 4
 
     performance_scores = run_experiments(cluster_range, n_runs)
 
@@ -464,31 +465,3 @@ if __name__ == '__main__':
     performance_scores_df.to_csv("data/clustering_results/raw_clustering_scores.csv", index=False)
 
     print("All models trained and saved successfully.")
-'''
-from concurrent.futures import ProcessPoolExecutor
-import pandas as pd
-
-def run_experiment_for_k(k, n_runs):
-    return k, run_experiments([k], n_runs)  # assuming run_experiments returns a dict-like per k
-
-if __name__ == '__main__':
-    cluster_range = range(3, 21)
-    n_runs = 500
-
-    performance_scores = {}
-
-    with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(run_experiment_for_k, k, n_runs) for k in cluster_range]
-        for future in futures:
-            k, result = future.result()
-            performance_scores[k] = result[k] if k in result else result  # adjust depending on return shape
-
-    performance_scores_df = flatten_performance_scores(performance_scores)
-    performance_scores_df.to_csv("data/clustering_results/raw_clustering_scores.csv", index=False)
-
-    print("All models trained and saved successfully.")
-
-
-    with Pool(processes=6) as pool:  # Use as many CPUs as you request via SLURM
-        results = pool.map(run_wrapper, all_args)
-'''
