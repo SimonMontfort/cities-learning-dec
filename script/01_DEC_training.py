@@ -13,9 +13,23 @@ import tensorflow as tf
 from tensorflow.keras import layers, models, callbacks, backend as K
 from tensorflow.keras.layers import Layer
 from tensorflow.keras.regularizers import l2
+from tensorflow.keras import mixed_precision
 import keras_tuner as kt
 import joblib
+import pathlib
 
+# faster computation with reduced memory
+mixed_precision.set_global_policy('mixed_float16')
+
+# set directory
+base_dir = os.environ.get("BASE_DIR")
+if base_dir is None:
+    raise EnvironmentError("BASE_DIR environment variable is not set.")
+else:
+    os.chdir(base_dir)
+    print(f"changed directory to the parent folder of the repo")
+
+print("Current working directory:", os.getcwd())
 
 print("CUDA_VISIBLE_DEVICES =", os.environ.get("CUDA_VISIBLE_DEVICES"))
 print("All physical devices:", tf.config.list_physical_devices())
@@ -33,10 +47,6 @@ if physical_devices:
 else:
     os.environ["OMP_NUM_THREADS"] = '20'
     print("GPU not found, using CPU")
-
-# Set working directory and environment variables
-# os.chdir("/Users/simon/Documents/repo/cities-learning-DEC")
-os.chdir("/home/smontfor/cities-learning-DEC")
 
 seed = 50
 os.environ['PYTHONHASHSEED'] = str(seed)
@@ -149,6 +159,7 @@ def target_distribution(q, temperature=.5):
     # Optional temperature scaling:
     return tf.nn.softmax(tf.math.log(weight + 1e-10) / temperature, axis=1)
 
+
 def build_autoencoder(hp):
     """
     Builds a simple fully connected autoencoder model and defines its hyperparameter search space.
@@ -162,10 +173,10 @@ def build_autoencoder(hp):
     The decoder mirrors the encoder structure to reconstruct the input.
     """
     input_dim = cities_clean_scaled.shape[1]
-    encoding_dim = hp.Int('encoding_dim', min_value=2, max_value=5, step=1)
+    encoding_dim = hp.Int('encoding_dim', min_value=2, max_value=4, step=1)
     reg = l2(hp.Float('l2_reg', min_value=1e-6, max_value=1e-2, sampling='log'))
 
-    units1 = hp.Int('units1', 16, 98, step=16)
+    units1 = hp.Int('units1', 32, 96, step=16)
     units2 = hp.Int('units2', 16, 32, step=8)
 
     input_layer = layers.Input(shape=(input_dim,))
@@ -182,6 +193,7 @@ def build_autoencoder(hp):
 
     return autoencoder
 
+
 def build_DEC_model(encoder_model, n_clusters, initial_centers=None):
     input_layer = encoder_model.input
     encoded_output = encoder_model.output
@@ -193,6 +205,7 @@ def build_DEC_model(encoder_model, n_clusters, initial_centers=None):
 
     return dec_model
 
+
 def compute_avg_cluster_dist(X_latent, centroids, assignments):
     distances = []
     for k in range(centroids.shape[0]):
@@ -203,6 +216,7 @@ def compute_avg_cluster_dist(X_latent, centroids, assignments):
         distances.extend(dists)
     return np.mean(distances)
 
+
 def train_autoencoder(run_id, model_dir='clustering_models/models'):
     seed_run = seed + run_id * 100
     np.random.seed(seed_run)
@@ -212,8 +226,9 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
     tuner = kt.Hyperband(
         build_autoencoder,
         objective='val_loss',
-        max_epochs=5,
+        max_epochs=30,
         factor=3,
+        executions_per_trial=2,
         directory=os.path.join('clustering_models', 'hyperband', f'run_{run_id}'),
         project_name='DEC_model_tuning'
     )
@@ -224,7 +239,7 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
 
     tuner.search(
         noisy_input, cities_clean_scaled,
-        epochs=20,
+        epochs=5,
         batch_size=128,
         validation_split=0.2,
         callbacks=[callbacks.EarlyStopping(monitor='val_loss', patience=10)],
@@ -244,7 +259,7 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
 
 def get_embeddings(encoder_model, run_id, latent_dir='clustering_models/latent_representation'):
 
-    embeddings = encoder_model.predict(cities_clean_scaled)
+    embeddings = encoder_model.predict(cities_clean_scaled, batch_size=1024)
 
     latent_path = os.path.join(latent_dir, f'latent_run_{run_id}.pkl')
     latent_df = pd.DataFrame(embeddings, columns=[f"latent_{i}" for i in range(embeddings.shape[1])])
@@ -280,6 +295,7 @@ def run_hierarchical_clustering(embeddings, n_clusters):
 
     return labels, scores
 
+
 def run_dec_clustering(encoder_model, n_clusters, initial_centers, run_id):
     dec_model = build_DEC_model(encoder_model, n_clusters, initial_centers)
     dec_model.compile(
@@ -287,67 +303,99 @@ def run_dec_clustering(encoder_model, n_clusters, initial_centers, run_id):
         loss=lambda y_true, y_pred: tf.keras.losses.KLD(y_true, y_pred)
     )
 
-    q = dec_model.predict(cities_clean_scaled)
-    # p = target_distribution(q)
+    # Initial soft assignments and predicted labels
+    q = dec_model(cities_clean_scaled, training=False).numpy()
     y_pred_last = q.argmax(axis=1)
 
-    maxiter = 500
-    update_interval = 5
+    # Hyperparameters
+    maxiter = 250
+    update_interval = 20
     window = 10
     tol_label = 1e-3
     tol_silhouette = 1e-4
     tol_dist_change = 1e-3
-    min_iter = 30
-    early_stop_dev = 100
+    min_iter = 20
+    early_stop_dev = 250
+    sample_size = 5000  # for faster silhouette computation
 
+    # Histories for convergence monitoring
     silhouette_history = deque(maxlen=window)
     label_delta_history = deque(maxlen=window)
     avg_dist_history = deque(maxlen=window)
 
+    # TensorFlow function for forward pass (faster graph execution)
+    @tf.function
+    def dec_forward(x):
+        return dec_model(x, training=False)
+
+    # Compute average cluster distance (vectorized)
+    def compute_avg_cluster_dist(embeddings, centroids, labels):
+        distances = np.linalg.norm(embeddings - centroids[labels], axis=1)
+        return distances.mean()
+
     for ite in range(maxiter):
-        q = dec_model.predict(cities_clean_scaled)
+        # Forward pass to get soft assignments
+        q = dec_forward(cities_clean_scaled).numpy()
         p = target_distribution(q)
         y_pred = q.argmax(axis=1)
 
+        # Calculate label changes
         delta_label = np.mean(y_pred != y_pred_last)
-        embeddings = encoder_model.predict(cities_clean_scaled)
-        sil = silhouette_score(embeddings, y_pred)
-        silhouette_history.append(sil)
-        label_delta_history.append(delta_label)
+        y_pred_last = y_pred
+
+        # Update DEC model weights
+        dec_model.train_on_batch(cities_clean_scaled, p)
 
         if ite % update_interval == 0:
+            # Get embeddings for metrics
+            embeddings = encoder_model.predict(cities_clean_scaled, batch_size=1024, verbose=0)
+
+            # Subsample embeddings for silhouette score if dataset is large
+            if len(embeddings) > sample_size:
+                idx = np.random.choice(len(embeddings), size=sample_size, replace=False)
+                sil = silhouette_score(embeddings[idx], y_pred[idx])
+            else:
+                sil = silhouette_score(embeddings, y_pred)
+
+            silhouette_history.append(sil)
+            label_delta_history.append(delta_label)
+
+            # Compute centroids and average cluster distance
             centroids = dec_model.get_layer("clustering").get_weights()[0]
-            print(f"[{ite}] Centroids: {centroids}")
             avg_dist = compute_avg_cluster_dist(embeddings, centroids, y_pred)
-            print(f"[{ite}] Avg cluster dist: {avg_dist:.4f}")
             avg_dist_history.append(avg_dist)
 
+            print(f"[{ite}] Silhouette: {sil:.4f}, ΔLabel: {delta_label:.4f}, AvgDist: {avg_dist:.4f}")
 
+        # Check convergence criteria after min_iter iterations
         if ite >= min_iter and len(silhouette_history) == window:
             sil_change = silhouette_history[-1] - silhouette_history[0]
             dist_change = avg_dist_history[-1] - avg_dist_history[0] if len(avg_dist_history) == window else 0
-            if abs(sil_change) < tol_silhouette and delta_label < tol_label and abs(dist_change) < tol_dist_change:
-                print(f"DEC converged at iter {ite}")
+            if (abs(sil_change) < tol_silhouette and
+                delta_label < tol_label and
+                abs(dist_change) < tol_dist_change):
+                print(f"✅ DEC converged at iter {ite}")
                 break
 
+        # Development early stop
         if ite == early_stop_dev:
-            print("Early stopping (dev)")
+            print("⚠️ Early stopping (dev)")
             break
 
-        dec_model.train_on_batch(cities_clean_scaled, p)
+    # Final embeddings and soft assignments
+    embeddings = encoder_model.predict(cities_clean_scaled, batch_size=1024, verbose=0)
+    q_final = dec_model.predict(cities_clean_scaled, batch_size=1024)
 
-    embeddings = encoder_model.predict(cities_clean_scaled)
-
-    # At the end, after training
-    q_final = dec_model.predict(cities_clean_scaled)  # final soft assignments
-
+    # Save soft assignments to CSV
     soft_df = pd.DataFrame(q_final, columns=[f"cluster_{i}_prob" for i in range(n_clusters)])
     soft_df['GHS_urban_area_id'] = cities_clean_sub['GHS_urban_area_id'].values
     soft_df.to_csv(f"data/clustering_results/dec_soft_assignments_run{run_id}_clusters{n_clusters}.csv", index=False)
     print(f"Saved soft cluster assignments")
 
+    # Final hard cluster labels
     final_labels = q_final.argmax(axis=1)
 
+    # Compute clustering metrics on full data
     scores = {
         'silhouette': silhouette_score(embeddings, final_labels),
         'calinski': calinski_harabasz_score(embeddings, final_labels),
@@ -410,6 +458,7 @@ def run_experiments(cluster_range, n_runs):
 
     return all_results
 
+
 def flatten_performance_scores(results):
     # Assume 'results' is your list of dictionaries
     flat_rows = []
@@ -444,8 +493,8 @@ def flatten_performance_scores(results):
 
 
 if __name__ == '__main__':
-    cluster_range = range(3,21)
-    n_runs = 1000
+    cluster_range = range(3,8)
+    n_runs = 4
 
     performance_scores = run_experiments(cluster_range, n_runs)
 
@@ -454,31 +503,3 @@ if __name__ == '__main__':
     performance_scores_df.to_csv("data/clustering_results/raw_clustering_scores.csv", index=False)
 
     print("All models trained and saved successfully.")
-'''
-from concurrent.futures import ProcessPoolExecutor
-import pandas as pd
-
-def run_experiment_for_k(k, n_runs):
-    return k, run_experiments([k], n_runs)  # assuming run_experiments returns a dict-like per k
-
-if __name__ == '__main__':
-    cluster_range = range(3, 21)
-    n_runs = 500
-
-    performance_scores = {}
-
-    with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(run_experiment_for_k, k, n_runs) for k in cluster_range]
-        for future in futures:
-            k, result = future.result()
-            performance_scores[k] = result[k] if k in result else result  # adjust depending on return shape
-
-    performance_scores_df = flatten_performance_scores(performance_scores)
-    performance_scores_df.to_csv("data/clustering_results/raw_clustering_scores.csv", index=False)
-
-    print("All models trained and saved successfully.")
-
-
-    with Pool(processes=6) as pool:  # Use as many CPUs as you request via SLURM
-        results = pool.map(run_wrapper, all_args)
-'''
