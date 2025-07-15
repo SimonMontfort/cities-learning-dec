@@ -226,8 +226,8 @@ def summarize_clustering_results(results, n_runs, ghs_ids, latent_runs, n_cluste
 if __name__ == "__main__":
     os.chdir("/Users/simon/Documents/repo/cities-learning-DEC")
 
-    cluster_range = range(3,15)
-    n_runs = 10
+    cluster_range = range(3,8)
+    n_runs = 4
 
     # Load data
     cities_clean_scaled_df = pd.read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_scaled.parquet")
@@ -242,7 +242,7 @@ if __name__ == "__main__":
 
     all_ari_entropy_records = []
 
-    top_percents = [0.2]  # Sensitivity analysis for top 20%, 30%, 40% , 0.3, 0.4
+    top_percents = [0.2, 0.3, 0.4]  # Sensitivity analysis for top 20%, 30%, 40%
 
     for n_clusters in cluster_range:
         consistency = summarize_clustering_results(performance_scores, n_runs, ghs_ids, latent_runs, n_clusters, top_percents=top_percents)
