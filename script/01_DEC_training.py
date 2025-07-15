@@ -13,9 +13,23 @@ import tensorflow as tf
 from tensorflow.keras import layers, models, callbacks, backend as K
 from tensorflow.keras.layers import Layer
 from tensorflow.keras.regularizers import l2
+from tensorflow.keras import mixed_precision
 import keras_tuner as kt
 import joblib
+import pathlib
 
+# faster computation with reduced memory
+mixed_precision.set_global_policy('mixed_float16')
+
+# set directory
+base_dir = os.environ.get("BASE_DIR")
+if base_dir is None:
+    raise EnvironmentError("BASE_DIR environment variable is not set.")
+else:
+    os.chdir(base_dir)
+    print(f"changed directory to the parent folder of the repo")
+
+print("Current working directory:", os.getcwd())
 
 print("CUDA_VISIBLE_DEVICES =", os.environ.get("CUDA_VISIBLE_DEVICES"))
 print("All physical devices:", tf.config.list_physical_devices())
@@ -33,10 +47,6 @@ if physical_devices:
 else:
     os.environ["OMP_NUM_THREADS"] = '20'
     print("GPU not found, using CPU")
-
-# Set working directory and environment variables
-# os.chdir("/Users/simon/Documents/repo/cities-learning-DEC")
-os.chdir("/home/smontfor/cities-learning-DEC")
 
 seed = 50
 os.environ['PYTHONHASHSEED'] = str(seed)
@@ -224,7 +234,7 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
 
     tuner.search(
         noisy_input, cities_clean_scaled,
-        epochs=20,
+        epochs=10,
         batch_size=128,
         validation_split=0.2,
         callbacks=[callbacks.EarlyStopping(monitor='val_loss', patience=10)],
@@ -287,25 +297,25 @@ def run_dec_clustering(encoder_model, n_clusters, initial_centers, run_id):
         loss=lambda y_true, y_pred: tf.keras.losses.KLD(y_true, y_pred)
     )
 
-    q = dec_model.predict(cities_clean_scaled)
+    q = dec_model(cities_clean_scaled, training=False).numpy()
     # p = target_distribution(q)
     y_pred_last = q.argmax(axis=1)
 
-    maxiter = 500
+    maxiter = 300
     update_interval = 5
     window = 10
     tol_label = 1e-3
     tol_silhouette = 1e-4
     tol_dist_change = 1e-3
-    min_iter = 30
-    early_stop_dev = 100
+    min_iter = 20
+    early_stop_dev = 80
 
     silhouette_history = deque(maxlen=window)
     label_delta_history = deque(maxlen=window)
     avg_dist_history = deque(maxlen=window)
 
     for ite in range(maxiter):
-        q = dec_model.predict(cities_clean_scaled)
+        q = dec_model(cities_clean_scaled, training=False).numpy()
         p = target_distribution(q)
         y_pred = q.argmax(axis=1)
 
@@ -444,8 +454,8 @@ def flatten_performance_scores(results):
 
 
 if __name__ == '__main__':
-    cluster_range = range(3,21)
-    n_runs = 1000
+    cluster_range = range(3,8)
+    n_runs = 50
 
     performance_scores = run_experiments(cluster_range, n_runs)
 
