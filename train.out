@@ -1,448 +1,0 @@
-changed directory to the parent folder of the repo
-Current working directory: /home/smontfor/cities-learning-dec
-CUDA_VISIBLE_DEVICES = 0
-All physical devices: [PhysicalDevice(name='/physical_device:CPU:0', device_type='CPU'), PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
-GPUs available: [PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
-Using GPU
-       GHS_population  GHS_population_growth  ...           cdd  GHS_urban_area_id
-count    1.142200e+04           1.142200e+04  ...  1.142200e+04       11422.000000
-mean    -1.430790e-17           1.393465e-16  ... -4.976661e-17        5863.438189
-std      1.000044e+00           1.000044e+00  ...  1.000044e+00        3382.803403
-min     -2.072827e-01          -4.767958e+00  ... -1.624478e+00           1.000000
-25%     -1.924796e-01          -5.453164e-01  ... -9.213424e-01        2925.250000
-50%     -1.661309e-01          -1.393820e-01  ... -6.352081e-02        5874.500000
-75%     -8.962175e-02           3.608087e-01  ...  9.524330e-01        8799.750000
-max      3.243664e+01           1.478191e+01  ...  2.410955e+00       11686.000000
-
-[8 rows x 10 columns]
-
-===== Running for 3 clusters =====
-Reloading Tuner from clustering_models/hyperband/run_0/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_0.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m14s[0m 1s/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 119ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m3s[0m 120ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_0.pkl
-[0] Silhouette: 0.5168, ΔLabel: 0.0000, AvgDist: 2.8320
-[20] Silhouette: 0.5863, ΔLabel: 0.0024, AvgDist: 3.0570
-[40] Silhouette: 0.6079, ΔLabel: 0.0022, AvgDist: 3.3111
-[60] Silhouette: 0.6182, ΔLabel: 0.0032, AvgDist: 3.7416
-[80] Silhouette: 0.6162, ΔLabel: 0.0016, AvgDist: 4.2121
-[100] Silhouette: 0.5946, ΔLabel: 0.0038, AvgDist: 4.8206
-[120] Silhouette: 0.5777, ΔLabel: 0.0037, AvgDist: 5.5598
-[140] Silhouette: 0.5713, ΔLabel: 0.0043, AvgDist: 6.5339
-[160] Silhouette: 0.5629, ΔLabel: 0.0009, AvgDist: 7.0480
-[180] Silhouette: 0.5611, ΔLabel: 0.0003, AvgDist: 6.7604
-[200] Silhouette: 0.5712, ΔLabel: 0.0004, AvgDist: 6.5158
-[220] Silhouette: 0.5893, ΔLabel: 0.0005, AvgDist: 6.2795
-[240] Silhouette: 0.6048, ΔLabel: 0.0005, AvgDist: 6.0706
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 234ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.5019
-DEC silhouette: 0.6016
-Reloading Tuner from clustering_models/hyperband/run_1/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_1.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m10s[0m 912ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 96ms/step  [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m2s[0m 96ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_1.pkl
-[0] Silhouette: 0.4114, ΔLabel: 0.0000, AvgDist: 2.0493
-[20] Silhouette: 0.5560, ΔLabel: 0.0045, AvgDist: 2.0374
-[40] Silhouette: 0.5944, ΔLabel: 0.0025, AvgDist: 2.3095
-[60] Silhouette: 0.5932, ΔLabel: 0.0044, AvgDist: 2.6659
-[80] Silhouette: 0.5856, ΔLabel: 0.0042, AvgDist: 3.0676
-[100] Silhouette: 0.5838, ΔLabel: 0.0010, AvgDist: 3.1890
-[120] Silhouette: 0.5962, ΔLabel: 0.0012, AvgDist: 2.9602
-[140] Silhouette: 0.6063, ΔLabel: 0.0013, AvgDist: 2.7964
-[160] Silhouette: 0.6011, ΔLabel: 0.0010, AvgDist: 2.7089
-[180] Silhouette: 0.6054, ΔLabel: 0.0012, AvgDist: 2.5821
-[200] Silhouette: 0.6251, ΔLabel: 0.0011, AvgDist: 2.4556
-[220] Silhouette: 0.6292, ΔLabel: 0.0009, AvgDist: 2.3905
-[240] Silhouette: 0.6401, ΔLabel: 0.0002, AvgDist: 2.3238
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 236ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.4063
-DEC silhouette: 0.6414
-Reloading Tuner from clustering_models/hyperband/run_2/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_2.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m13s[0m 1s/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 110ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m2s[0m 110ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_2.pkl
-[0] Silhouette: 0.4032, ΔLabel: 0.0000, AvgDist: 2.4254
-[20] Silhouette: 0.5021, ΔLabel: 0.0025, AvgDist: 2.1516
-[40] Silhouette: 0.5463, ΔLabel: 0.0028, AvgDist: 2.3363
-[60] Silhouette: 0.5420, ΔLabel: 0.0018, AvgDist: 2.5964
-[80] Silhouette: 0.5381, ΔLabel: 0.0021, AvgDist: 2.9839
-[100] Silhouette: 0.5104, ΔLabel: 0.0039, AvgDist: 3.6209
-[120] Silhouette: 0.4911, ΔLabel: 0.0025, AvgDist: 4.4053
-[140] Silhouette: 0.4814, ΔLabel: 0.0025, AvgDist: 5.3133
-[160] Silhouette: 0.4843, ΔLabel: 0.0024, AvgDist: 6.2242
-[180] Silhouette: 0.4802, ΔLabel: 0.0011, AvgDist: 6.8726
-[200] Silhouette: 0.4716, ΔLabel: 0.0011, AvgDist: 7.1762
-[220] Silhouette: 0.4882, ΔLabel: 0.0006, AvgDist: 7.3392
-[240] Silhouette: 0.4780, ΔLabel: 0.0004, AvgDist: 7.4869
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 234ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3961
-DEC silhouette: 0.4834
-Reloading Tuner from clustering_models/hyperband/run_3/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_3.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m11s[0m 1s/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 95ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m2s[0m 95ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_3.pkl
-[0] Silhouette: 0.4732, ΔLabel: 0.0000, AvgDist: 2.0844
-[20] Silhouette: 0.5177, ΔLabel: 0.0128, AvgDist: 2.1015
-[40] Silhouette: 0.5455, ΔLabel: 0.0061, AvgDist: 2.4359
-[60] Silhouette: 0.5410, ΔLabel: 0.0025, AvgDist: 2.6040
-[80] Silhouette: 0.5539, ΔLabel: 0.0018, AvgDist: 2.5188
-[100] Silhouette: 0.5794, ΔLabel: 0.0011, AvgDist: 2.3995
-[120] Silhouette: 0.5799, ΔLabel: 0.0011, AvgDist: 2.3155
-[140] Silhouette: 0.5808, ΔLabel: 0.0011, AvgDist: 2.2730
-[160] Silhouette: 0.5892, ΔLabel: 0.0019, AvgDist: 2.2671
-[180] Silhouette: 0.5873, ΔLabel: 0.0020, AvgDist: 2.2684
-[200] Silhouette: 0.5970, ΔLabel: 0.0015, AvgDist: 2.1547
-[220] Silhouette: 0.6192, ΔLabel: 0.0008, AvgDist: 2.0258
-[240] Silhouette: 0.6277, ΔLabel: 0.0005, AvgDist: 1.9546
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 225ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.4679
-DEC silhouette: 0.6272
-
-===== Running for 4 clusters =====
-Reloading Tuner from clustering_models/hyperband/run_0/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_0.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 211ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_0.pkl
-[0] Silhouette: 0.5150, ΔLabel: 0.0000, AvgDist: 2.7461
-[20] Silhouette: 0.5878, ΔLabel: 0.0034, AvgDist: 2.9253
-[40] Silhouette: 0.6106, ΔLabel: 0.0024, AvgDist: 3.1318
-[60] Silhouette: 0.6030, ΔLabel: 0.0049, AvgDist: 3.5798
-[80] Silhouette: 0.5882, ΔLabel: 0.0053, AvgDist: 4.2573
-[100] Silhouette: 0.5727, ΔLabel: 0.0014, AvgDist: 4.7114
-[120] Silhouette: 0.5720, ΔLabel: 0.0018, AvgDist: 4.8106
-[140] Silhouette: 0.5810, ΔLabel: 0.0011, AvgDist: 4.9263
-[160] Silhouette: 0.5926, ΔLabel: 0.0007, AvgDist: 4.7687
-[180] Silhouette: 0.5879, ΔLabel: 0.0003, AvgDist: 4.6367
-[200] Silhouette: 0.5987, ΔLabel: 0.0004, AvgDist: 4.5555
-[220] Silhouette: 0.6101, ΔLabel: 0.0003, AvgDist: 4.4659
-[240] Silhouette: 0.6186, ΔLabel: 0.0005, AvgDist: 4.4067
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 232ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.4995
-DEC silhouette: 0.6170
-Reloading Tuner from clustering_models/hyperband/run_1/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_1.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 212ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_1.pkl
-[0] Silhouette: 0.3748, ΔLabel: 0.0000, AvgDist: 1.8449
-[20] Silhouette: 0.4628, ΔLabel: 0.0109, AvgDist: 1.7437
-[40] Silhouette: 0.4881, ΔLabel: 0.0075, AvgDist: 1.9920
-[60] Silhouette: 0.5088, ΔLabel: 0.0037, AvgDist: 2.2281
-[80] Silhouette: 0.5045, ΔLabel: 0.0057, AvgDist: 2.4095
-[100] Silhouette: 0.5089, ΔLabel: 0.0039, AvgDist: 2.6947
-[120] Silhouette: 0.5186, ΔLabel: 0.0031, AvgDist: 2.9687
-[140] Silhouette: 0.5269, ΔLabel: 0.0022, AvgDist: 3.1559
-[160] Silhouette: 0.5312, ΔLabel: 0.0008, AvgDist: 3.0589
-[180] Silhouette: 0.5423, ΔLabel: 0.0016, AvgDist: 2.8943
-[200] Silhouette: 0.5635, ΔLabel: 0.0016, AvgDist: 2.7531
-[220] Silhouette: 0.5788, ΔLabel: 0.0004, AvgDist: 2.6409
-[240] Silhouette: 0.5856, ΔLabel: 0.0004, AvgDist: 2.5777
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 234ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3713
-DEC silhouette: 0.5896
-Reloading Tuner from clustering_models/hyperband/run_2/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_2.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 211ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 17ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 17ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_2.pkl
-[0] Silhouette: 0.3967, ΔLabel: 0.0000, AvgDist: 2.3822
-[20] Silhouette: 0.4994, ΔLabel: 0.0052, AvgDist: 2.1544
-[40] Silhouette: 0.5400, ΔLabel: 0.0031, AvgDist: 2.4591
-[60] Silhouette: 0.5346, ΔLabel: 0.0045, AvgDist: 2.9729
-[80] Silhouette: 0.5243, ΔLabel: 0.0051, AvgDist: 3.6430
-[100] Silhouette: 0.5102, ΔLabel: 0.0025, AvgDist: 4.2840
-[120] Silhouette: 0.5004, ΔLabel: 0.0017, AvgDist: 4.8708
-[140] Silhouette: 0.5032, ΔLabel: 0.0012, AvgDist: 5.3624
-[160] Silhouette: 0.5090, ΔLabel: 0.0012, AvgDist: 5.8261
-[180] Silhouette: 0.5085, ΔLabel: 0.0011, AvgDist: 6.3050
-[200] Silhouette: 0.4996, ΔLabel: 0.0011, AvgDist: 6.8308
-[220] Silhouette: 0.5057, ΔLabel: 0.0011, AvgDist: 7.4489
-[240] Silhouette: 0.5043, ΔLabel: 0.0018, AvgDist: 8.1747
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 227ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3889
-DEC silhouette: 0.5077
-Reloading Tuner from clustering_models/hyperband/run_3/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_3.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 203ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 17ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 17ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_3.pkl
-[0] Silhouette: 0.3520, ΔLabel: 0.0000, AvgDist: 1.8965
-[20] Silhouette: 0.4585, ΔLabel: 0.0094, AvgDist: 1.7099
-[40] Silhouette: 0.4962, ΔLabel: 0.0092, AvgDist: 1.9100
-[60] Silhouette: 0.5056, ΔLabel: 0.0103, AvgDist: 2.3509
-[80] Silhouette: 0.5154, ΔLabel: 0.0035, AvgDist: 2.7603
-[100] Silhouette: 0.5295, ΔLabel: 0.0014, AvgDist: 2.6525
-[120] Silhouette: 0.5294, ΔLabel: 0.0004, AvgDist: 2.5241
-[140] Silhouette: 0.5343, ΔLabel: 0.0006, AvgDist: 2.4502
-[160] Silhouette: 0.5453, ΔLabel: 0.0007, AvgDist: 2.3763
-[180] Silhouette: 0.5505, ΔLabel: 0.0009, AvgDist: 2.3037
-[200] Silhouette: 0.5682, ΔLabel: 0.0011, AvgDist: 2.2420
-[220] Silhouette: 0.5707, ΔLabel: 0.0007, AvgDist: 2.1881
-[240] Silhouette: 0.5751, ΔLabel: 0.0002, AvgDist: 2.1486
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 222ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3517
-DEC silhouette: 0.5759
-
-===== Running for 5 clusters =====
-Reloading Tuner from clustering_models/hyperband/run_0/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_0.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m3s[0m 323ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m1s[0m 19ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_0.pkl
-[0] Silhouette: 0.4857, ΔLabel: 0.0000, AvgDist: 2.5142
-[20] Silhouette: 0.5280, ΔLabel: 0.0089, AvgDist: 2.4915
-[40] Silhouette: 0.5339, ΔLabel: 0.0057, AvgDist: 2.8219
-[60] Silhouette: 0.5511, ΔLabel: 0.0048, AvgDist: 3.2325
-[80] Silhouette: 0.5586, ΔLabel: 0.0040, AvgDist: 3.5368
-[100] Silhouette: 0.5501, ΔLabel: 0.0031, AvgDist: 3.9411
-[120] Silhouette: 0.5413, ΔLabel: 0.0038, AvgDist: 4.3854
-[140] Silhouette: 0.5482, ΔLabel: 0.0022, AvgDist: 4.8578
-[160] Silhouette: 0.5335, ΔLabel: 0.0024, AvgDist: 5.2689
-[180] Silhouette: 0.5326, ΔLabel: 0.0024, AvgDist: 5.6409
-[200] Silhouette: 0.5315, ΔLabel: 0.0023, AvgDist: 5.9176
-[220] Silhouette: 0.5405, ΔLabel: 0.0009, AvgDist: 6.1022
-[240] Silhouette: 0.5452, ΔLabel: 0.0013, AvgDist: 6.1967
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 241ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.4706
-DEC silhouette: 0.5426
-Reloading Tuner from clustering_models/hyperband/run_1/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_1.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 214ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_1.pkl
-[0] Silhouette: 0.3750, ΔLabel: 0.0000, AvgDist: 1.8314
-[20] Silhouette: 0.4608, ΔLabel: 0.0110, AvgDist: 1.7240
-[40] Silhouette: 0.4879, ΔLabel: 0.0064, AvgDist: 1.9572
-[60] Silhouette: 0.5026, ΔLabel: 0.0038, AvgDist: 2.1978
-[80] Silhouette: 0.5067, ΔLabel: 0.0070, AvgDist: 2.4845
-[100] Silhouette: 0.5078, ΔLabel: 0.0065, AvgDist: 2.8665
-[120] Silhouette: 0.5107, ΔLabel: 0.0036, AvgDist: 3.3124
-[140] Silhouette: 0.5156, ΔLabel: 0.0017, AvgDist: 3.5513
-[160] Silhouette: 0.5199, ΔLabel: 0.0016, AvgDist: 3.6430
-[180] Silhouette: 0.5288, ΔLabel: 0.0011, AvgDist: 3.8535
-[200] Silhouette: 0.5292, ΔLabel: 0.0004, AvgDist: 4.0611
-[220] Silhouette: 0.5386, ΔLabel: 0.0009, AvgDist: 4.2737
-[240] Silhouette: 0.5419, ΔLabel: 0.0008, AvgDist: 4.5045
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 244ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3711
-DEC silhouette: 0.5406
-Reloading Tuner from clustering_models/hyperband/run_2/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_2.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 214ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_2.pkl
-[0] Silhouette: 0.4272, ΔLabel: 0.0000, AvgDist: 2.0202
-[20] Silhouette: 0.4561, ΔLabel: 0.0069, AvgDist: 2.1149
-[40] Silhouette: 0.4712, ΔLabel: 0.0027, AvgDist: 2.3044
-[60] Silhouette: 0.4694, ΔLabel: 0.0038, AvgDist: 2.6885
-[80] Silhouette: 0.4731, ΔLabel: 0.0040, AvgDist: 3.2424
-[100] Silhouette: 0.4732, ΔLabel: 0.0034, AvgDist: 3.8170
-[120] Silhouette: 0.4744, ΔLabel: 0.0044, AvgDist: 4.4358
-[140] Silhouette: 0.4656, ΔLabel: 0.0032, AvgDist: 5.3085
-[160] Silhouette: 0.4785, ΔLabel: 0.0011, AvgDist: 5.9545
-[180] Silhouette: 0.4884, ΔLabel: 0.0009, AvgDist: 6.2887
-[200] Silhouette: 0.4902, ΔLabel: 0.0005, AvgDist: 6.4415
-[220] Silhouette: 0.5065, ΔLabel: 0.0004, AvgDist: 6.5651
-[240] Silhouette: 0.5184, ΔLabel: 0.0004, AvgDist: 6.6507
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 236ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.4184
-DEC silhouette: 0.5193
-Reloading Tuner from clustering_models/hyperband/run_3/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_3.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 206ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_3.pkl
-[0] Silhouette: 0.3415, ΔLabel: 0.0000, AvgDist: 1.8769
-[20] Silhouette: 0.4555, ΔLabel: 0.0102, AvgDist: 1.6851
-[40] Silhouette: 0.4928, ΔLabel: 0.0111, AvgDist: 1.8881
-[60] Silhouette: 0.5041, ΔLabel: 0.0105, AvgDist: 2.3787
-[80] Silhouette: 0.5121, ΔLabel: 0.0033, AvgDist: 2.7370
-[100] Silhouette: 0.5212, ΔLabel: 0.0014, AvgDist: 2.6611
-[120] Silhouette: 0.5201, ΔLabel: 0.0009, AvgDist: 2.6019
-[140] Silhouette: 0.5253, ΔLabel: 0.0007, AvgDist: 2.5681
-[160] Silhouette: 0.5347, ΔLabel: 0.0006, AvgDist: 2.5294
-[180] Silhouette: 0.5343, ΔLabel: 0.0006, AvgDist: 2.4925
-[200] Silhouette: 0.5478, ΔLabel: 0.0004, AvgDist: 2.4507
-[220] Silhouette: 0.5537, ΔLabel: 0.0004, AvgDist: 2.4209
-[240] Silhouette: 0.5551, ΔLabel: 0.0002, AvgDist: 2.3910
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 234ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3402
-DEC silhouette: 0.5579
-
-===== Running for 6 clusters =====
-Reloading Tuner from clustering_models/hyperband/run_0/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_0.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 212ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_0.pkl
-[0] Silhouette: 0.3714, ΔLabel: 0.0000, AvgDist: 2.3103
-[20] Silhouette: 0.4464, ΔLabel: 0.0149, AvgDist: 2.2136
-[40] Silhouette: 0.4792, ΔLabel: 0.0100, AvgDist: 2.5414
-[60] Silhouette: 0.4837, ΔLabel: 0.0035, AvgDist: 2.8323
-[80] Silhouette: 0.5059, ΔLabel: 0.0021, AvgDist: 2.9625
-[100] Silhouette: 0.5076, ΔLabel: 0.0018, AvgDist: 3.0266
-[120] Silhouette: 0.5066, ΔLabel: 0.0025, AvgDist: 3.1663
-[140] Silhouette: 0.5123, ΔLabel: 0.0021, AvgDist: 3.3050
-[160] Silhouette: 0.5065, ΔLabel: 0.0018, AvgDist: 3.4277
-[180] Silhouette: 0.5142, ΔLabel: 0.0016, AvgDist: 3.5705
-[200] Silhouette: 0.5142, ΔLabel: 0.0028, AvgDist: 3.8364
-[220] Silhouette: 0.5139, ΔLabel: 0.0018, AvgDist: 4.1331
-[240] Silhouette: 0.5197, ΔLabel: 0.0004, AvgDist: 4.2608
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 243ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 42ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m1s[0m 42ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3576
-DEC silhouette: 0.5185
-Reloading Tuner from clustering_models/hyperband/run_1/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_1.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 215ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_1.pkl
-[0] Silhouette: 0.2967, ΔLabel: 0.0000, AvgDist: 1.6824
-[20] Silhouette: 0.3723, ΔLabel: 0.0091, AvgDist: 1.6207
-[40] Silhouette: 0.4113, ΔLabel: 0.0083, AvgDist: 1.8366
-[60] Silhouette: 0.4262, ΔLabel: 0.0049, AvgDist: 2.1388
-[80] Silhouette: 0.4333, ΔLabel: 0.0025, AvgDist: 2.3400
-[100] Silhouette: 0.4553, ΔLabel: 0.0031, AvgDist: 2.5305
-[120] Silhouette: 0.4575, ΔLabel: 0.0033, AvgDist: 2.7106
-[140] Silhouette: 0.4613, ΔLabel: 0.0033, AvgDist: 2.9158
-[160] Silhouette: 0.4597, ΔLabel: 0.0029, AvgDist: 3.1899
-[180] Silhouette: 0.4712, ΔLabel: 0.0025, AvgDist: 3.4571
-[200] Silhouette: 0.4750, ΔLabel: 0.0029, AvgDist: 3.8151
-[220] Silhouette: 0.4798, ΔLabel: 0.0013, AvgDist: 4.1942
-[240] Silhouette: 0.4910, ΔLabel: 0.0018, AvgDist: 4.4442
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 251ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.2896
-DEC silhouette: 0.4941
-Reloading Tuner from clustering_models/hyperband/run_2/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_2.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 211ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_2.pkl
-[0] Silhouette: 0.3960, ΔLabel: 0.0000, AvgDist: 1.8555
-[20] Silhouette: 0.4537, ΔLabel: 0.0080, AvgDist: 1.8363
-[40] Silhouette: 0.4705, ΔLabel: 0.0118, AvgDist: 2.0903
-[60] Silhouette: 0.4664, ΔLabel: 0.0095, AvgDist: 2.5918
-[80] Silhouette: 0.4786, ΔLabel: 0.0063, AvgDist: 2.9976
-[100] Silhouette: 0.4835, ΔLabel: 0.0022, AvgDist: 3.3924
-[120] Silhouette: 0.5022, ΔLabel: 0.0020, AvgDist: 3.6790
-[140] Silhouette: 0.4997, ΔLabel: 0.0020, AvgDist: 3.9814
-[160] Silhouette: 0.5047, ΔLabel: 0.0008, AvgDist: 4.2922
-[180] Silhouette: 0.5160, ΔLabel: 0.0019, AvgDist: 4.6227
-[200] Silhouette: 0.5085, ΔLabel: 0.0018, AvgDist: 5.0045
-[220] Silhouette: 0.5186, ΔLabel: 0.0011, AvgDist: 5.2868
-[240] Silhouette: 0.5360, ΔLabel: 0.0004, AvgDist: 5.3698
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 234ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3826
-DEC silhouette: 0.5344
-Reloading Tuner from clustering_models/hyperband/run_3/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_3.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 203ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 17ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 17ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_3.pkl
-[0] Silhouette: 0.3392, ΔLabel: 0.0000, AvgDist: 1.7167
-[20] Silhouette: 0.4032, ΔLabel: 0.0101, AvgDist: 1.7074
-[40] Silhouette: 0.4275, ΔLabel: 0.0051, AvgDist: 1.8683
-[60] Silhouette: 0.4354, ΔLabel: 0.0074, AvgDist: 2.1017
-[80] Silhouette: 0.4427, ΔLabel: 0.0055, AvgDist: 2.4703
-[100] Silhouette: 0.4574, ΔLabel: 0.0016, AvgDist: 2.6589
-[120] Silhouette: 0.4732, ΔLabel: 0.0011, AvgDist: 2.5471
-[140] Silhouette: 0.4852, ΔLabel: 0.0015, AvgDist: 2.4774
-[160] Silhouette: 0.4971, ΔLabel: 0.0017, AvgDist: 2.4111
-[180] Silhouette: 0.5011, ΔLabel: 0.0005, AvgDist: 2.3612
-[200] Silhouette: 0.5162, ΔLabel: 0.0009, AvgDist: 2.3237
-[220] Silhouette: 0.5291, ΔLabel: 0.0004, AvgDist: 2.2882
-[240] Silhouette: 0.5370, ΔLabel: 0.0005, AvgDist: 2.2516
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 238ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3410
-DEC silhouette: 0.5376
-
-===== Running for 7 clusters =====
-Reloading Tuner from clustering_models/hyperband/run_0/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_0.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 210ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_0.pkl
-[0] Silhouette: 0.3609, ΔLabel: 0.0000, AvgDist: 2.2680
-[20] Silhouette: 0.4386, ΔLabel: 0.0149, AvgDist: 2.1997
-[40] Silhouette: 0.4776, ΔLabel: 0.0080, AvgDist: 2.4875
-[60] Silhouette: 0.4933, ΔLabel: 0.0029, AvgDist: 2.7061
-[80] Silhouette: 0.5130, ΔLabel: 0.0029, AvgDist: 2.8359
-[100] Silhouette: 0.5126, ΔLabel: 0.0018, AvgDist: 2.9760
-[120] Silhouette: 0.5110, ΔLabel: 0.0028, AvgDist: 3.1765
-[140] Silhouette: 0.5147, ΔLabel: 0.0041, AvgDist: 3.5350
-[160] Silhouette: 0.4994, ΔLabel: 0.0023, AvgDist: 3.8925
-[180] Silhouette: 0.4999, ΔLabel: 0.0023, AvgDist: 4.2594
-[200] Silhouette: 0.4999, ΔLabel: 0.0018, AvgDist: 4.6833
-[220] Silhouette: 0.5093, ΔLabel: 0.0009, AvgDist: 5.0140
-[240] Silhouette: 0.5163, ΔLabel: 0.0004, AvgDist: 5.1813
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 241ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3470
-DEC silhouette: 0.5035
-Reloading Tuner from clustering_models/hyperband/run_1/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_1.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 217ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 19ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_1.pkl
-[0] Silhouette: 0.2897, ΔLabel: 0.0000, AvgDist: 1.5712
-[20] Silhouette: 0.3675, ΔLabel: 0.0097, AvgDist: 1.4331
-[40] Silhouette: 0.3957, ΔLabel: 0.0102, AvgDist: 1.6058
-[60] Silhouette: 0.4069, ΔLabel: 0.0113, AvgDist: 1.9269
-[80] Silhouette: 0.4231, ΔLabel: 0.0050, AvgDist: 2.1616
-[100] Silhouette: 0.4417, ΔLabel: 0.0025, AvgDist: 2.1904
-[120] Silhouette: 0.4459, ΔLabel: 0.0026, AvgDist: 2.2674
-[140] Silhouette: 0.4503, ΔLabel: 0.0025, AvgDist: 2.4227
-[160] Silhouette: 0.4642, ΔLabel: 0.0021, AvgDist: 2.5222
-[180] Silhouette: 0.4778, ΔLabel: 0.0013, AvgDist: 2.5515
-[200] Silhouette: 0.4863, ΔLabel: 0.0008, AvgDist: 2.5740
-[220] Silhouette: 0.5029, ΔLabel: 0.0010, AvgDist: 2.6059
-[240] Silhouette: 0.5103, ΔLabel: 0.0012, AvgDist: 2.6375
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 245ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 21ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 22ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.2822
-DEC silhouette: 0.5128
-Reloading Tuner from clustering_models/hyperband/run_2/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_2.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 216ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_2.pkl
-[0] Silhouette: 0.3757, ΔLabel: 0.0000, AvgDist: 1.7432
-[20] Silhouette: 0.4107, ΔLabel: 0.0144, AvgDist: 1.8424
-[40] Silhouette: 0.4186, ΔLabel: 0.0085, AvgDist: 2.2297
-[60] Silhouette: 0.4278, ΔLabel: 0.0093, AvgDist: 2.5457
-[80] Silhouette: 0.4463, ΔLabel: 0.0018, AvgDist: 2.7790
-[100] Silhouette: 0.4563, ΔLabel: 0.0042, AvgDist: 3.0096
-[120] Silhouette: 0.4570, ΔLabel: 0.0024, AvgDist: 3.2719
-[140] Silhouette: 0.4729, ΔLabel: 0.0013, AvgDist: 3.4123
-[160] Silhouette: 0.4766, ΔLabel: 0.0006, AvgDist: 3.5074
-[180] Silhouette: 0.4908, ΔLabel: 0.0010, AvgDist: 3.5487
-[200] Silhouette: 0.4951, ΔLabel: 0.0013, AvgDist: 3.5127
-[220] Silhouette: 0.5046, ΔLabel: 0.0012, AvgDist: 3.4473
-[240] Silhouette: 0.5214, ΔLabel: 0.0007, AvgDist: 3.4101
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 236ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3637
-DEC silhouette: 0.5227
-Reloading Tuner from clustering_models/hyperband/run_3/DEC_model_tuning/tuner0.json
-Saved model to clustering_models/models/model_run_3.keras
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 204ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 18ms/step
-Saved latent representation to clustering_models/latent_representation/latent_run_3.pkl
-[0] Silhouette: 0.3295, ΔLabel: 0.0000, AvgDist: 1.6037
-[20] Silhouette: 0.3790, ΔLabel: 0.0147, AvgDist: 1.5648
-[40] Silhouette: 0.4009, ΔLabel: 0.0101, AvgDist: 1.8426
-[60] Silhouette: 0.4196, ΔLabel: 0.0044, AvgDist: 1.9706
-[80] Silhouette: 0.4424, ΔLabel: 0.0034, AvgDist: 2.0748
-[100] Silhouette: 0.4594, ΔLabel: 0.0042, AvgDist: 2.2195
-[120] Silhouette: 0.4638, ΔLabel: 0.0012, AvgDist: 2.2644
-[140] Silhouette: 0.4891, ΔLabel: 0.0011, AvgDist: 2.1971
-[160] Silhouette: 0.4981, ΔLabel: 0.0013, AvgDist: 2.1305
-[180] Silhouette: 0.4979, ΔLabel: 0.0011, AvgDist: 2.0844
-[200] Silhouette: 0.5152, ΔLabel: 0.0015, AvgDist: 2.0388
-[220] Silhouette: 0.5266, ΔLabel: 0.0007, AvgDist: 1.9713
-[240] Silhouette: 0.5378, ΔLabel: 0.0010, AvgDist: 1.9282
-[1m 1/12[0m [32m━[0m[37m━━━━━━━━━━━━━━━━━━━[0m [1m2s[0m 235ms/step[1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step [1m12/12[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 20ms/step
-Saved soft cluster assignments
-KMeans silhouette: 0.3258
-DEC silhouette: 0.5338
-All models trained and saved successfully.

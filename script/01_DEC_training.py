@@ -17,10 +17,11 @@ from tensorflow.keras import mixed_precision
 import keras_tuner as kt
 import joblib
 import pathlib
+from tensorflow.keras import backend as K
+import gc
 
-# faster computation with reduced memory
-mixed_precision.set_global_policy('mixed_float16')
-
+os.chdir("/Users/simon/Documents/repo/cities-learning-dec")
+'''
 # set directory
 base_dir = os.environ.get("BASE_DIR")
 if base_dir is None:
@@ -28,6 +29,8 @@ if base_dir is None:
 else:
     os.chdir(base_dir)
     print(f"changed directory to the parent folder of the repo")
+'''
+
 
 print("Current working directory:", os.getcwd())
 
@@ -54,6 +57,7 @@ random.seed(seed)
 np.random.seed(seed)
 tf.random.set_seed(seed)
 
+'''
 # === Load and preprocess data ===
 cities_clean = pd.read_parquet('data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation.parquet', engine='pyarrow')
 ghsl = gpd.read_file("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg")
@@ -68,12 +72,15 @@ cities_clean.drop(columns='ID_UC_G0', inplace=True)
 for continent in ['North America', 'South America', 'Europe', 'Africa', 'Asia']:
     cities_clean[continent] = (cities_clean['continent'] == continent).astype(int)
 cities_clean['Oceania'] = cities_clean['continent'].isin(['Oceania', 'Australia']).astype(int)
+'''
+
+cities_clean = pd.read_parquet('data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included.parquet', engine='pyarrow')
 
 variables = [
     'GHS_population', 'GHS_population_growth',
     'GHS_population_density', 'GHS_population_density_growth',
-    'GHS_GDP_PPP', 'GHS_GDP_PPP_growth',
-    "CL_B12_CUR_2010", 'hdd', 'cdd'
+    'GHS_GDP_PPP', 'GHS_GDP_PPP_growth', 'GHS_critical_infra', 'GHS_greenness_index',
+    'GHS_precipitation', 'hdd', 'cdd'
 ]
 
 cities_clean_sub = cities_clean[variables + ['GHS_urban_area_id']].copy()
@@ -91,7 +98,12 @@ cities_clean_scaled_df['GHS_urban_area_id'] = cities_clean_sub['GHS_urban_area_i
 # Display descriptive statistics of the scaled data (excluding the ID column)
 print(cities_clean_scaled_df.describe())
 
-cities_clean_scaled_df.to_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_scaled.parquet")
+cities_clean_scaled_df.to_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included_scaled.parquet")
+
+print(np.isnan(cities_clean_scaled).any())
+
+del cities_clean
+gc.collect()
 
 class ClusteringLayer(Layer):
     '''
@@ -224,21 +236,17 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
     tf.random.set_seed(seed_run)
 
     tuner = kt.Hyperband(
-        build_autoencoder,
+        hypermodel=build_autoencoder,  # your function that returns the model
         objective='val_loss',
-        max_epochs=30,
+        max_epochs=50,
         factor=3,
         executions_per_trial=2,
         directory=os.path.join('clustering_models', 'hyperband', f'run_{run_id}'),
         project_name='DEC_model_tuning'
     )
 
-    noise_factor = 0.1
-    noisy_input = cities_clean_scaled + noise_factor * np.random.normal(0.0, 1.0, cities_clean_scaled.shape)
-    noisy_input = np.clip(noisy_input, -3., 3.)
-
     tuner.search(
-        noisy_input, cities_clean_scaled,
+        cities_clean_scaled, cities_clean_scaled,
         epochs=5,
         batch_size=128,
         validation_split=0.2,
@@ -253,6 +261,9 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
     model_path = os.path.join(model_dir, f'model_run_{run_id}.keras')
     encoder_model.save(model_path)
     print(f"Saved model to {model_path}")
+
+    del tuner
+    gc.collect()
 
     return encoder_model
 
@@ -270,8 +281,10 @@ def get_embeddings(encoder_model, run_id, latent_dir='clustering_models/latent_r
     return embeddings
 
 
-def run_kmeans_clustering(embeddings, n_clusters):
-    kmeans = KMeans(n_clusters=n_clusters, n_init=20, random_state=seed)
+def run_kmeans_clustering(embeddings, n_clusters, run_id, seed):
+    seed_run = seed + run_id * 100
+
+    kmeans = KMeans(n_clusters=n_clusters, n_init=20, random_state=seed_run)
     labels = kmeans.fit_predict(embeddings)
 
     scores = {
@@ -308,79 +321,96 @@ def run_dec_clustering(encoder_model, n_clusters, initial_centers, run_id):
     y_pred_last = q.argmax(axis=1)
 
     # Hyperparameters
-    maxiter = 250
-    update_interval = 20
+    maxiter = 500
+    update_interval = 30
+    tol_silhouette = 1e-3
+    tol_label = 5e-3
+    tol_distance = 1e-3
     window = 10
-    tol_label = 1e-3
-    tol_silhouette = 1e-4
-    tol_dist_change = 1e-3
     min_iter = 20
-    early_stop_dev = 250
     sample_size = 5000  # for faster silhouette computation
+    patience = 5
+
+    # Tracking best model
+    best_silhouette = -1.0
+    best_model_weights = None
+    no_improve_count = 0
 
     # Histories for convergence monitoring
     silhouette_history = deque(maxlen=window)
     label_delta_history = deque(maxlen=window)
     avg_dist_history = deque(maxlen=window)
 
-    # TensorFlow function for forward pass (faster graph execution)
     @tf.function
     def dec_forward(x):
         return dec_model(x, training=False)
 
-    # Compute average cluster distance (vectorized)
     def compute_avg_cluster_dist(embeddings, centroids, labels):
         distances = np.linalg.norm(embeddings - centroids[labels], axis=1)
         return distances.mean()
 
     for ite in range(maxiter):
-        # Forward pass to get soft assignments
+        # Forward pass
         q = dec_forward(cities_clean_scaled).numpy()
         p = target_distribution(q)
         y_pred = q.argmax(axis=1)
 
-        # Calculate label changes
+        # Label change
         delta_label = np.mean(y_pred != y_pred_last)
         y_pred_last = y_pred
 
-        # Update DEC model weights
+        # Update DEC model
         dec_model.train_on_batch(cities_clean_scaled, p)
 
         if ite % update_interval == 0:
-            # Get embeddings for metrics
+            # Embeddings for metrics
             embeddings = encoder_model.predict(cities_clean_scaled, batch_size=1024, verbose=0)
-
-            # Subsample embeddings for silhouette score if dataset is large
             if len(embeddings) > sample_size:
                 idx = np.random.choice(len(embeddings), size=sample_size, replace=False)
                 sil = silhouette_score(embeddings[idx], y_pred[idx])
             else:
                 sil = silhouette_score(embeddings, y_pred)
 
-            silhouette_history.append(sil)
-            label_delta_history.append(delta_label)
-
-            # Compute centroids and average cluster distance
+            # Compute extra metrics
             centroids = dec_model.get_layer("clustering").get_weights()[0]
             avg_dist = compute_avg_cluster_dist(embeddings, centroids, y_pred)
+
+            # Update histories
+            silhouette_history.append(sil)
+            label_delta_history.append(delta_label)
             avg_dist_history.append(avg_dist)
 
             print(f"[{ite}] Silhouette: {sil:.4f}, ΔLabel: {delta_label:.4f}, AvgDist: {avg_dist:.4f}")
 
-        # Check convergence criteria after min_iter iterations
+            # Track best model
+            if sil > best_silhouette + 1e-4:
+                best_silhouette = sil
+                best_model_weights = dec_model.get_weights()
+                no_improve_count = 0
+            else:
+                no_improve_count += 1
+
+        # Stop criteria
         if ite >= min_iter and len(silhouette_history) == window:
-            sil_change = silhouette_history[-1] - silhouette_history[0]
-            dist_change = avg_dist_history[-1] - avg_dist_history[0] if len(avg_dist_history) == window else 0
-            if (abs(sil_change) < tol_silhouette and
-                delta_label < tol_label and
-                abs(dist_change) < tol_dist_change):
-                print(f"✅ DEC converged at iter {ite}")
+            avg_sil_change = np.mean(np.abs(np.diff(silhouette_history)))
+            avg_label_delta = np.mean(label_delta_history)
+            avg_dist_change = np.mean(np.abs(np.diff(avg_dist_history)))
+
+            if (avg_sil_change < tol_silhouette and
+                avg_label_delta < tol_label and
+                avg_dist_change < tol_distance):
+                print(f"DEC converged (stable metrics) at iter {ite}")
                 break
 
-        # Development early stop
-        if ite == early_stop_dev:
-            print("⚠️ Early stopping (dev)")
+        if no_improve_count >= patience:
+            print(f"No silhouette improvement for {patience} checks. Stopping at iter {ite}.")
             break
+
+    # Restore best weights
+    if best_model_weights:
+        dec_model.set_weights(best_model_weights)
+        print(f"Restored best model with silhouette: {best_silhouette:.4f}")
+
 
     # Final embeddings and soft assignments
     embeddings = encoder_model.predict(cities_clean_scaled, batch_size=1024, verbose=0)
@@ -402,6 +432,8 @@ def run_dec_clustering(encoder_model, n_clusters, initial_centers, run_id):
         'davies': davies_bouldin_score(embeddings, final_labels)
     }
 
+    K.clear_session()
+
     return final_labels, scores
 
 
@@ -410,13 +442,13 @@ def train_run(run_id, n_clusters, cities_clean_scaled):
     embeddings = get_embeddings(encoder_model, run_id)
 
     # Simple K-Means
-    kmeans_labels, kmeans_centers, kmeans_scores = run_kmeans_clustering(cities_clean_scaled, n_clusters)
+    kmeans_labels, kmeans_centers, kmeans_scores = run_kmeans_clustering(cities_clean_scaled, n_clusters, run_id, seed)
 
     # Simple Hierarchical Clustering
     hierarchical_labels, hierarchical_scores = run_hierarchical_clustering(cities_clean_scaled, n_clusters)
 
     # Embedded KMeans
-    kmeans_emb_labels, kmeans_emb_centers, kmeans_emb_scores = run_kmeans_clustering(embeddings, n_clusters)
+    kmeans_emb_labels, kmeans_emb_centers, kmeans_emb_scores = run_kmeans_clustering(embeddings, n_clusters, run_id, seed)
 
     # DEC
     dec_labels, dec_scores = run_dec_clustering(encoder_model, n_clusters, kmeans_emb_centers, run_id)
@@ -493,8 +525,8 @@ def flatten_performance_scores(results):
 
 
 if __name__ == '__main__':
-    cluster_range = range(3,8)
-    n_runs = 4
+    cluster_range = range(3,12)
+    n_runs = 30
 
     performance_scores = run_experiments(cluster_range, n_runs)
 

@@ -1,3 +1,24 @@
+R.version
+# _                           
+# platform       aarch64-apple-darwin20      
+# arch           aarch64                     
+# os             darwin20                    
+# system         aarch64, darwin20           
+# status                                     
+# major          4                           
+# minor          3.2                         
+# year           2023                        
+# month          10                          
+# day            31                          
+# svn rev        85441                       
+# language       R                           
+# version.string R version 4.3.2 (2023-10-31)
+# nickname       Eye Holes                  
+
+########################################
+# packages, plot theme and directory
+########################################
+
 # Load necessary libraries
 library(ggplot2)
 library(dplyr)
@@ -5,17 +26,16 @@ library(readr)
 library(tidyr)
 library(stringr)
 library(ggsci)
+library(scales)
 
-setwd("/Users/simon/Documents/repo/cities-learning")
+setwd("/Users/simon/Documents/repo/cities-learning-dec")
 
 theme_set(
   theme_light() +   
     theme(panel.grid = element_blank(),
           panel.border = element_rect(colour = "grey50", fill=NA, linewidth=.5),
           strip.placement = "outside",
-          # text = element_text(size = 12, family = "Myriad Pro"),
-          # axis.text.x = element_text(colour = "grey30", angle = 45, hjust = 1, vjust = 1),
-          # axis.text.y = element_text(colour = "grey30"),
+          axis.title = element_text(size = 10),
           axis.ticks.length = unit(.2, "cm"),
           axis.ticks = element_line(colour = "grey50", linewidth=.5  ),
           strip.background = element_rect(fill = "white"),
@@ -25,7 +45,6 @@ theme_set(
           legend.key.size = unit(.4, "cm"),
           legend.position = c(0.95,.27),
           legend.margin = margin(rep(2, 4)),
-          # legend.title = element_blank(),
           legend.justification = c(1, 0),
           legend.background = element_rect(fill="white", 
                                            size=.3, linetype="solid", 
@@ -34,149 +53,168 @@ theme_set(
 )
 
 
+####################
+# performance
+####################
+all_data <- read.csv("data/clustering_results/raw_clustering_scores.csv") %>% as_tibble()
+all_data
 
-all_data <- read.csv("data/clustering_results/raw_clustering_scores.csv")
+all_data <- all_data %>% 
+  mutate(method = ifelse(method == "dec", "Deep Embedded Clustering", method),
+         method = ifelse(method == "hierarchical simple", "Hierarchical Clustering", method),
+         method = ifelse(method == "kmeans embedded", "K-Means Clustering\non the latent space", method),
+         method = ifelse(method == "kmeans simple", "K-Means Clustering\nsimple", method),
+         method = factor(method, levels = c("Deep Embedded Clustering",
+                                            "K-Means Clustering\non the latent space",
+                                            "K-Means Clustering\nsimple",
+                                            "Hierarchical Clustering"))) %>% 
+  rename(Silhouette = silhouette,
+         Calinski = calinski, 
+         Davies = davies)
 
-
-means_and_se <- all_data %>% 
+sil_means_se <- all_data %>% 
   group_by(method, n_clusters) %>% 
-  summarise(se_silhouette = sd(silhouette)/sqrt(n()), 
-            mean_silhouette = mean(silhouette),
-            se_calinski = sd(calinski)/sqrt(n()), 
-            mean_calinski = mean(calinski),
-            se_davies = sd(davies)/sqrt(n()), 
-            mean_davies = mean(davies)) %>% 
+  summarise(se_Silhouette = sd(Silhouette)/sqrt(n()), 
+            mean_Silhouette = mean(Silhouette),
+            se_Calinski = sd(Calinski)/sqrt(n()), 
+            mean_Calinski = mean(Calinski),
+            se_Davies = sd(Davies)/sqrt(n()), 
+            mean_Davies = mean(Davies)) %>% 
   pivot_longer(
     cols = -c(method, n_clusters),
     names_to = c(".value", "metric"),
     names_sep = "_"
-  )
-  
+  ) %>% 
+  mutate(metric = factor(metric, levels = c("Silhouette",  "Calinski", "Davies"))) 
 
-# Create the plot with facet_wrap
-p_clustering_performance_agg <- all_data %>% 
-  pivot_longer(c("silhouette",  "calinski", "davies"), names_to = "metric") %>% 
+
+# Data frame for vline in only for DEC
+vline_df <- data.frame(
+  method = factor("Deep Embedded Clustering", levels = c("Deep Embedded Clustering",
+                                                         "K-Means Clustering\non the latent space",
+                                                         "K-Means Clustering\nsimple",
+                                                         "Hierarchical Clustering")),
+  xintercept = 4
+)
+
+# Add geom_vline using this data frame
+# Create grouping labels for the legend
+p_clustering_performance_agg <- all_data %>%
+  pivot_longer(c("Silhouette", "Calinski", "Davies"), names_to = "metric") %>%
+  mutate(metric = factor(metric, levels = c("Silhouette", "Calinski", "Davies"))) %>%
   ggplot(aes(x = n_clusters, y = value, group = run_id)) +
-  geom_line(alpha = .08, col = "black") +
-  geom_ribbon(data = means_and_se,
-            aes(x = n_clusters, ymin = mean - se*1.96, ymax = mean + se*1.96),
-            inherit.aes = F, fill = "coral1", alpha = .4 , lty = 2) +
-  geom_line(data = means_and_se, 
-              aes(x = n_clusters, y = mean),
-              inherit.aes = F, col = "coral1", alpha = .6) + 
-  facet_grid(metric~method, scales = "free_y") +
-  labs(x = "Number of Clusters", y = "Score") 
-p_clustering_performance_agg
-
-p_clustering_performance_agg
-ggsave(p_clustering_performance_agg, file = "plots/p_clustering_performance_agg.pdf", height = 6, width = 10)
+  
+  # Grey lines for individual runs
+  geom_line(aes(color = "Individual Runs"), alpha = .08) +
+  
+  # Vertical reference line
+  geom_vline(data = vline_df,
+             aes(xintercept = xintercept, color = "# clusters chosen"), lty = 3) +
+  
+  # Confidence interval ribbon
+  geom_ribbon(data = sil_means_se,
+              aes(x = n_clusters,
+                  ymin = mean - se * 1.96,
+                  ymax = mean + se * 1.96,
+                  fill = "95% confidence interval"),
+              inherit.aes = FALSE, alpha = .4) +
+  
+  # Mean line
+  geom_line(data = sil_means_se,
+            aes(x = n_clusters, y = mean, color = "Mean"),
+            inherit.aes = FALSE, alpha = .8) +
+  
+  # Scales for colors and fills
+  scale_color_manual(
+    values = c(
+      "Individual Runs" = "grey40",
+      "Mean" = "coral2",
+      "# clusters chosen" = "black"
+    )
+  ) +
+  scale_fill_manual(
+    name = "Legend",
+    values = c("95% confidence interval" = "coral1")
+  ) +
+  
+  # Adjust guides to combine legends
+  guides(color = guide_legend(order = 1),
+         fill = guide_legend(order = 2)) +
+  
+  # Axis and theme
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  scale_y_continuous(breaks = scales::pretty_breaks()) +
+  facet_grid(metric ~ method, scales = "free_y") +
+  labs(x = "Number of clusters", y = "Score") +
+  theme(legend.position = c(.9,.5), 
+        legend.title = element_blank())
 
 
 ####################
-# uncertainty
+# stability
 ####################
 
-all_data <- read_csv("data/clustering_results/raw_clustering_scores.csv")
+stab <- read.csv("data/clustering_results/ensemble_stability_analysis.csv")
+stab <- stab %>% filter(ensemble_size >2)
 
-# List files matching the pattern
-files <- list.files(path = "data/clustering_results", 
-                    pattern = "cluster_assignments_(DEC|KMeans)_\\d+.*\\.csv$", 
-                    full.names = TRUE)
+ari_mean_se <- stab %>% 
+  group_by(ensemble_size) %>% 
+  summarise(se = sd(ari_vs_prev)/sqrt(n()),
+            mean = mean(ari_vs_prev)
+            )
 
-# Read each file and enrich with method and cluster number
-data_list <- lapply(files, function(f) {
-  df <- read.csv(f)
+# Add geom_vline using this data frame
+# Create grouping labels for the legend
+p_stability <- stab %>%
+  mutate(method = "Deep Embeedded Clustering") %>% 
+  ggplot(aes(x = ensemble_size, y = ari_vs_prev, group = perm_id)) +
   
-  # Extract method (DEC or KMeans)
-  method <- sub(".*cluster_assignments_(DEC|KMeans)_.*", "\\1", basename(f))
+  # Grey lines for individual runs
+  geom_line(aes(color = "Permutation"), alpha = .08) +
+  # Confidence interval ribbon
+  geom_ribbon(data = ari_mean_se,
+              aes(x = ensemble_size,
+                  ymin = mean - se * 1.96,
+                  ymax = mean + se * 1.96,
+                  fill = "95% CI"),
+              inherit.aes = FALSE, alpha = .4) +
   
-  # Extract cluster number
-  cluster_num <- sub(".*_(\\d+).*\\.csv$", "\\1", basename(f))
+  # Mean line
+  geom_line(data = ari_mean_se,
+            aes(x = ensemble_size, y = mean, color = "Mean"),
+            inherit.aes = FALSE, alpha = .8) +
   
-  # Add as new columns
-  df$method <- method
-  df$cluster_num <- as.integer(cluster_num)
+  # Scales for colors and fills
+  scale_color_manual(
+    values = c(
+      "Permutation\n(of chosen models)" = "grey40",
+      "Mean" = "coral2"
+    )
+  ) +
+  scale_fill_manual(
+    name = "Legend",
+    values = c("95% CI" = "coral1")
+  ) +
   
-  return(df)
-})
+  # Adjust guides to combine legends
+  guides(color = guide_legend(order = 1),
+         fill = guide_legend(order = 2)) +
+  
+  # Axis and theme
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  scale_y_continuous(breaks = scales::pretty_breaks()) +
+  facet_grid(. ~ method) +
+  labs(x = "Ensemble size\n(number of models)", y = "Adjusted Rand Index") +
+  theme(legend.position = c(.9,.4), 
+        legend.title = element_blank(), 
+        plot.margin = unit(c(.5,.73,0,.73), "cm"))
+p_stability
 
-# Combine all into one data frame
-combined_df <- do.call(rbind, data_list)
+####################
+# export results
+####################
 
-# Optional: view result
-head(combined_df)
+p_clust_perf_and_stabil <- ggarrange(p_clustering_performance_agg, p_stability, heights = c(3, 2), ncol = 1, align = "v", labels = c("a", "b"))
 
-chosen_n = 6
-
-p_avg_prob_entroopy_per_cluster <- combined_df %>% 
-  mutate(most_probable_cluster = most_probable_cluster + 1) %>%
-  filter(cluster_num == chosen_n) %>%
-  group_by(most_probable_cluster, method, cluster_num) %>% 
-  summarise(mean_prob = mean(assignment_probability),
-            mean_entropy = mean(entropy)) %>% 
-  pivot_longer(c("mean_prob", "mean_entropy")) %>% 
-  mutate(name = ifelse(name == "mean_prob", "Mean probability", "Mean entropy")) %>% 
-  ggplot(aes(x = most_probable_cluster, y = value)) + 
-  geom_col(col = "black", fill = "coral1", alpha = .3) +
-  facet_grid(name~method) + 
-  labs(x = "Cluster", y = "Score") +
-  scale_x_continuous(breaks = 1:chosen_n)
-p_avg_prob_entroopy_per_cluster
-
-library(ggpubr)
-p_perf_and_uncertainty <- ggarrange(p_clustering_performance_agg, p_avg_prob_entroopy_per_cluster, labels = c("a", "b"),  
-align = "v", ncol = 1, heights = c(3,2.3))
-p_perf_and_uncertainty
-ggsave(p_perf_and_uncertainty, file = "plots/p_perf_and_uncertainty.pdf", height = 8, width = 10)
-
-
-# file_path <- "clustering_models/latent_representation"
-# # Load and reshape all files
-# all_data <- lapply(file_paths, function(file_path) {
-#   run_number <- str_extract(file_path, "run[1-4]") %>% str_extract("[1-4]") %>% as.integer()
-#   df <- read_csv(file_path)
-#   df_long <- df %>%
-#     pivot_longer(c("DEC", "KMeans", "Hierarchical"), names_to = "Method", values_to = "Silhouette") %>%
-#     mutate(Method = ifelse(Method == "DEC", paste(Method, "run", run_number), Method))
-#   return(df_long)
-# }) %>% bind_rows()
-# 
-# 
-# # Create the plot with facet_wrap
-# p_clustering_performance <- all_data %>% 
-#   ggplot(aes(x = n_clusters, y = silhouette, group = run_id, col = run_id)) +
-#   geom_line(alpha = .5) +
-#   geom_point(size = 1, alpha = .5) +
-#   # scale_color_manual(values = method_colors) +
-#   # scale_shape_manual(values = method_shapes) +
-#   facet_wrap(~method) +
-#   labs(x = "Number of Clusters", y = "Silhouette Score") 
-# p_clustering_performance
-#   
-# # Find the point for DEC run 3 at 10 clusters
-# highlight_point <- all_data %>%
-#   ungroup() %>% 
-#   mutate(keep = method == "DEC" & n_clusters == 10) %>% 
-#   mutate(n_clusters = n_clusters - abs(max(n_clusters)-min(n_clusters))/80,
-#          silhouette = silhouette + abs(max(silhouette)-min(silhouette))/80) %>% 
-#   filter(keep) %>% 
-#   slice(1)
-# 
-# 
-# # Add annotation and arrow to the plot
-# p_clustering_performance <- p_clustering_performance +
-#   geom_curve(data = highlight_point,
-#              aes(x = n_clusters - 4, y = silhouette + 0.05,
-#                  xend = n_clusters, yend = silhouette),
-#              arrow = arrow(length = unit(0.02, "npc")), 
-#              curvature = 0.3, 
-#              color = "black", linewidth = 0.5) +
-#   annotate("text", x = highlight_point$n_clusters - 4,
-#            y = highlight_point$silhouette + 0.055,
-#            label = "10 clusters chosen for run 3",
-#            hjust = 0, size = 3)
-# 
-# p_clustering_performance
-# ggsave(p_clustering_performance, file = "plots/p_clustering_performance.pdf", height = 6, width = 10)
-# 
+ggsave(p_clust_perf_and_stabil, file = "plots/figA1.pdf", height = 10, width = 10)
 
