@@ -102,11 +102,11 @@ initial_join <- st_join(ghsl_centroids, ipcc_cont, left = TRUE)
 
 # Step 3: Identify unmatched cities
 unmatched <- initial_join %>%
-  filter(is.na(Region))  # Adjust "Region" if column name differs
+  filter(is.na(Region)) 
 
 # Step 4: Buffer those unmatched by ~10 km (~0.1 degrees if in lat/lon)
 unmatched_buffered <- unmatched %>%
-  st_buffer(dist = units::set_units(15000, "m"))  # or use units::set_units(10000, "m") if projected
+  st_buffer(dist = units::set_units(15000, "m")) 
 
 # Step 5: Try matching again using the buffer (left = FALSE to detect all overlaps)
 buffered_matches <- st_join(unmatched_buffered %>% select(-Region), ipcc_cont, left = FALSE)
@@ -181,14 +181,14 @@ final$Region_final[final$ID_UC_G0 == 159]  <- "Small Islands" # Port Louis, Maur
 final$Region_final[final$ID_UC_G0 == 165]  <- "Small Islands" # Malé, Maldives
 final$Region_final[final$ID_UC_G0 == 191]  <- "Small Islands" # Port Vila, Vanuatu
 final$Region_final[final$ID_UC_G0 == 219]  <- "Small Islands" # João Teves, Cabo Verde
-final$Region_final[final$ID_UC_G0 == 223]  <- "Small Islands" # La Orotava, Spain
+final$Region_final[final$ID_UC_G0 == 223]  <- "Europe" # La Orotava, Spain
 final$Region_final[final$ID_UC_G0 == 320]  <- "Small Islands" # Fomboni, Comoros
 final$Region_final[final$ID_UC_G0 == 327]  <- "Asia" # Le Tampon, Réunion
 final$Region_final[final$ID_UC_G0 == 333]  <- "Asia" # Dwarka, India
 final$Region_final[final$ID_UC_G0 == 382]  <- "Europe" # Santa Cruz de Tenerife, Spain
 final$Region_final[final$ID_UC_G0 == 410]  <- "Europe" # Odense, Denmark
 final$Region_final[final$ID_UC_G0 == 481]  <- "Asia" # Saint-Denis, Réunion
-final$Region_final[final$ID_UC_G0 == 487]  <- "Europe" # Mithapur, India
+final$Region_final[final$ID_UC_G0 == 487]  <- "Asia" # Mithapur, India
 final$Region_final[final$ID_UC_G0 == 530]  <- "Europe" # Cuartería El Uno, Spain
 final$Region_final[final$ID_UC_G0 == 623]  <- "Europe" # Saint-André, Réunion
 final$Region_final[final$ID_UC_G0 == 663]  <- "Small Islands" # Anse-à-Galets, Haiti
@@ -199,7 +199,7 @@ final$Region_final[final$ID_UC_G0 == 1245] <- "Asia" # Teluk Dalam, Indonesia
 final$Region_final[final$ID_UC_G0 == 2065] <- "Africa" # Hell-Ville, Madagascar
 final$Region_final[final$ID_UC_G0 == 2621] <- "Europe" # Ceuta, Spain
 final$Region_final[final$ID_UC_G0 == 3158] <- "Asia" # Jeju-si, South Korea
-final$Region_final[final$ID_UC_G0 == 3673] <- "Europe" # Zanzibar City, Tanzania
+final$Region_final[final$ID_UC_G0 == 3673] <- "Africa" # Zanzibar City, Tanzania
 final$Region_final[final$ID_UC_G0 == 4178] <- "Africa" # Fnideq, Morocco
 final$Region_final[final$ID_UC_G0 == 4210] <- "Asia" # Jolo, Philippines
 final$Region_final[final$ID_UC_G0 == 4366] <- "South America" # Porlamar, Venezuela
@@ -253,9 +253,48 @@ final$Region_final[final$ID_UC_G0 == 11656] <- "Asia" # Putuo District, China
 final$Region_final[final$ID_UC_G0 == 11683] <- "Asia" # Dongtou, China
 final$Region_final[final$ID_UC_G0 == 11686] <- "Asia" # Pingtan, China
 
+final$Region_final[final$ID_UC_G0 == 2897] <- "Asia" # Kobani, Syria
+final$Region_final[final$ID_UC_G0 == 7356] <- "Africa" # Hurghada, Egypt
+
 final <- final %>% 
   as.data.frame() %>% 
   select(ID_UC_G0, Region = Region_final)
+
+### checks
+final_test <- ghsl %>% 
+  left_join(final %>% as.data.frame())
+
+for (region in unique(final_test$Region)) {
+  countries_per_region <- final_test %>% 
+    filter(Region == region) %>% 
+    pull(GC_CNT_GAD_2025) %>% 
+    unique() %>% sort()
+  print(
+    paste(region)
+  )
+  print(
+    countries_per_region
+  )
+}
+
+final_test %>% group_by(Region) %>% summarise()
+
+tmap_mode("view")
+# 2. Plot with tmap
+tm_shape(st_make_valid(ipcc_cont)) +
+  tm_polygons(col = "grey90") +
+  tm_shape(st_buffer(ipcc_cont, 10000)) +
+  tm_polygons(alpha = .2, col = "Region") +
+  tm_shape(final_test %>% filter(GC_CNT_GAD_2025 == "El Salvador" & Region == "South America")) +
+  tm_dots(size = 0.1) +
+  tm_layout(
+    legend.outside = TRUE,
+    main.title = "Urban Centers with and without IPCC Region",
+    main.title.size = 1.2
+  ) + 
+  tmap_options(check.and.fix = TRUE)
+
+
 
 write.csv(final, "data/IPCC-WGII-continental-regions_shapefile/cities_ids_with_ipcc_regions.csv")
 
