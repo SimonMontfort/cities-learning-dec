@@ -279,6 +279,15 @@ for (region in unique(final_test$Region)) {
 
 final_test %>% group_by(Region) %>% summarise()
 
+# validate
+check <- final %>% 
+  filter(ID_UC_G0 %in% unmatched$ID_UC_G0) %>% 
+  left_join(ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025)) %>% 
+  select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025, Region) 
+
+check %>% as.data.frame()
+  
+
 tmap_mode("view")
 # 2. Plot with tmap
 tm_shape(st_make_valid(ipcc_cont)) +
