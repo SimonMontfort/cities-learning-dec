@@ -1,3 +1,19 @@
+# restart your session to replicate results
+R.version
+# platform       aarch64-apple-darwin20      
+# arch           aarch64                     
+# os             darwin20                    
+# system         aarch64, darwin20           
+# status                                     
+# major          4                           
+# minor          3.2                         
+# year           2023                        
+# month          10                          
+# day            31                          
+# svn rev        85441                       
+# language       R                           
+# version.string R version 4.3.2 (2023-10-31)
+# nickname       Eye Holes  
 rm(list = ls())
 
 setwd("/Users/simon/Documents/repo/cities-learning-dec")
@@ -128,7 +144,7 @@ proj_robin <- "+proj=robin"
 ghsl <- st_transform(ghsl, proj_robin)
 world <- st_transform(world, proj_robin)
 bb <- st_transform(bb, proj_robin)
-ipcc_cont <- st_transform(ipcc_cont, proj_robin)
+# ipcc_cont <- st_transform(ipcc_cont, proj_robin)
 
 ################################################################################
 # functions needed throughout the script
@@ -186,67 +202,10 @@ rename_co_vars <- function(df, column) {
     mutate(!!column := recode(!!column, !!!rename_map))
 }
 
-################################################################################
-# clustering assignment probailities
-################################################################################
-
-# Function to round a numeric vector to fixed decimals and preserve sum = 1
-round_preserve_sum <- function(x, digits = 2) {
-  scaled <- x * 10^digits
-  floored <- floor(scaled)
-  remainder <- scaled - floored
-  shortfall <- round(sum(scaled)) - sum(floored)
-  
-  # Order the remainders decreasingly, add 1 to top 'shortfall' entries
-  indices <- order(remainder, decreasing = TRUE)[seq_len(shortfall)]
-  floored[indices] <- floored[indices] + 1
-  
-  result <- floored / 10^digits
-  return(result)
-}
-
-p_co_assignment_prob <- clust %>%
-  dplyr::select(consensus_label_majority, starts_with("mean_prob_cluster_")) %>%
-  pivot_longer(
-    cols = starts_with("mean_prob_cluster_"),
-    names_to = "cluster",
-    values_to = "probability"
-  ) %>%
-  mutate(cluster = as.numeric(gsub("mean_prob_cluster_", "", cluster))) %>%
-  left_join(cluster_names, by = "consensus_label_majority") %>%
-  left_join(cluster_names, by = c("cluster" = "consensus_label_majority")) %>%
-  group_by(cluster_name.x, cluster_name.y) %>%
-  summarise(mean_probability = mean(probability, na.rm = TRUE), .groups = "drop") %>%
-  group_by(cluster_name.x) %>%
-  mutate(rounded_prob = round_preserve_sum(mean_probability)) %>%
-  ungroup() %>% 
-  ggplot(aes(x = cluster_name.x, y = cluster_name.y, fill = mean_probability)) +
-  geom_tile(color = "white", height = .98, width = 0.86) +
-  geom_text(aes(label = sprintf("%.2f", rounded_prob))) +
-  scale_fill_gradient2(
-    low = "white", mid = "#fff1cc", high = "#963d03",
-    # limits = c(0, 1), 
-    oob = scales::squish
-  ) +
-  labs(
-    x = "Main Cluster",
-    y = "Mean probabilities\nfor cluster assignment",
-    title = ""
-  ) +
-  theme_minimal() +
-  theme(
-    legend.position = "none",
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid = element_blank()
-  )
-
-ggsave(p_co_assignment_prob, file = "plots/p_co_assignment_prob.pdf", width = 5, height = 4)
 
 ################################################################################
 # recode variables and add ipcc continents
 ################################################################################
-
-
 
 ipcc_regions %>% 
   ggplot() +

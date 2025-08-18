@@ -29,7 +29,7 @@ library(sf)
 # load data
 ################################################################################
 
-dat <- read.csv("/Users/simon/Documents/repo/cities-learning-dec/data/clustering_results/dec_clusters_k4.csv")
+clust <- read.csv("data/clustering_results/dec_clusters_k4.csv")
 
 cluster_names <- data.frame(
   consensus_label_majority = 0:3,
@@ -87,7 +87,7 @@ theme_SM <- function(){
 ################################################################################
 
 # Pivot to long format
-long_dat <- dat %>%
+long_clust <- clust %>%
   pivot_longer(
     cols = starts_with("mean_prob_cluster_"),
     names_to = "cluster_prob",
@@ -97,26 +97,86 @@ long_dat <- dat %>%
   mutate(cluster_prob = as.integer(cluster_prob))
 
 # Keep only rows where the mean prob column matches the assigned cluster
-matched <- long_dat %>%
+matched <- long_clust %>%
   filter(consensus_label_majority == cluster_prob) %>% 
   left_join(cluster_names, by = "consensus_label_majority")
 
 p_mean_prob <- ggplot(matched, aes(x = cluster_name, y = mean_prob)) +
-  geom_violin(aes(fill = cluster_name), alpha = 0.5, width = 1, color = NA) +
+  geom_violin(fill = "grey90", alpha = 0.5, width = 1, color = "black") +
   geom_boxplot(width = 0.1, outlier.shape = NA, fill = "white", color = "black") +
   scale_fill_brewer(palette = "Set2", name = "Cluster") +
   labs(
-    x = "Assigned Cluster",
-    y = "Mean Assignment Probability",
-    title = "Mean Assignment Probability per Cluster"
+    x = "Main city type (hard assignment)",
+    y = "Assignment probability",
+    title = "Cluster assignment probality distribution"
   ) +
+  # coord_flip() +
   theme_SM() +
   theme(legend.position = "none")
-
+p_mean_prob
 ggsave(p_mean_prob, file = "plots/p_mean_prob.pdf", width = 5, height = 4)
 
+################################################################################
+# clustering assignment probailities
+################################################################################
 
+# Function to round a numeric vector to fixed decimals and preserve sum = 1
+round_preserve_sum <- function(x, digits = 2) {
+  scaled <- x * 10^digits
+  floored <- floor(scaled)
+  remainder <- scaled - floored
+  shortfall <- round(sum(scaled)) - sum(floored)
+  
+  # Order the remainders decreasingly, add 1 to top 'shortfall' entries
+  indices <- order(remainder, decreasing = TRUE)[seq_len(shortfall)]
+  floored[indices] <- floored[indices] + 1
+  
+  result <- floored / 10^digits
+  return(result)
+}
 
+p_co_assignment_prob <- clust %>%
+  dplyr::select(consensus_label_majority, starts_with("mean_prob_cluster_")) %>%
+  pivot_longer(
+    cols = starts_with("mean_prob_cluster_"),
+    names_to = "cluster",
+    values_to = "probability"
+  ) %>%
+  mutate(cluster = as.numeric(gsub("mean_prob_cluster_", "", cluster))) %>%
+  left_join(cluster_names, by = "consensus_label_majority") %>%
+  left_join(cluster_names, by = c("cluster" = "consensus_label_majority")) %>%
+  group_by(cluster_name.x, cluster_name.y) %>%
+  summarise(mean_probability = mean(probability, na.rm = TRUE), .groups = "drop") %>%
+  group_by(cluster_name.x) %>%
+  mutate(rounded_prob = round_preserve_sum(mean_probability)) %>%
+  ungroup() %>% 
+  ggplot(aes(x = cluster_name.x, y = cluster_name.y, fill = mean_probability)) +
+  geom_tile(color = "white", height = .98, width = 0.86) +
+  geom_text(aes(label = sprintf("%.2f", rounded_prob))) +
+  scale_fill_gradient2(
+    low = "white", mid = "#fff1cc", high = "#963d03",
+    # limits = c(0, 1), 
+    oob = scales::squish
+  ) +
+  labs(
+    x = "Main city type (hard assignment)",
+    y = "Secondary city type (soft assignment)",
+    title = "Overlapping cluster membership"
+  ) +
+  # coord_flip() +
+  theme_SM() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    plot.margin = margin(c(0,0,0,3), "cm")
+  )
+p_co_assignment_prob
+ggsave(p_co_assignment_prob, file = "plots/p_co_assignment_prob.pdf", width = 5, height = 4)
+
+p_cluster_probabilities <- ggarrange(p_mean_prob, p_co_assignment_prob, labels = "auto", nrow = 1, align = "h")
+p_cluster_probabilities
+ggsave(p_cluster_probabilities, file = "plots/figA2.pdf", width = 10, height = 5)
 
 # 
 # 
