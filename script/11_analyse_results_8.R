@@ -236,15 +236,15 @@ clust <- clust %>%
   select(GHS_urban_area_id, consensus_label_majority, 
          co_vars, similarity, mean_prob
          ) %>% 
-  left_join(cites_ipcc_regions, by= c("ID_UC_G0")) %>% 
+  left_join(cites_ipcc_regions, by= c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(n_studies_per_city, by = c("GHS_urban_area_id" = "city_id")) %>% 
   mutate(n_studies = ifelse(is.na(n_studies), 0, n_studies)) %>% 
   # mutate(similarity = (similarity - min(similarity, na.rm = TRUE)) /
   #          (max(similarity, na.rm = TRUE) - min(similarity, na.rm = TRUE)),
   #        similarity_n_studies_per_city=similarity*n_studies
   #        ) %>% 
-  group_by(consensus_label_majority, continent) %>% 
-  arrange(consensus_label_majority, continent, -mean_prob) %>% 
+  group_by(consensus_label_majority, Region) %>% 
+  arrange(consensus_label_majority, Region, -mean_prob) %>% 
   mutate(representative_city = row_number()<=2)
 
 
@@ -293,7 +293,7 @@ desc_dat <- clust %>%
   filter(!is.na(consensus_label_majority)) %>% 
   as.data.frame() %>% 
   select(consensus_label_majority, co_vars, 
-         continent, mean_prob,
+         Region, mean_prob,
          GHS_urban_area_id) 
 
 # ################################################################################
@@ -389,18 +389,18 @@ desc_dat <- clust %>%
 # emissions
 ###########
 
-# Compute median emissions per continent × cluster_name
+# Compute median emissions per Region × cluster_name
 emmissions_dat <- emmissions %>%
   as.data.frame() %>% 
   left_join(
-    clust %>% select(consensus_label_majority, continent, GHS_urban_area_id, GHS_population),
+    clust %>% select(consensus_label_majority, Region, GHS_urban_area_id, GHS_population),
     by = c("ID_UC_G0" = "GHS_urban_area_id")
   ) %>%
   left_join(cluster_names, by = "consensus_label_majority") %>%
   left_join(ghsl %>% select(GC_POP_TOT_2025, ID_UC_G0), by = c("ID_UC_G0")) %>% 
   mutate(
     odiac_norm = ODIAC / GC_POP_TOT_2025,
-    continent = factor(continent, levels = reg_vars)
+    Region = factor(Region, levels = reg_vars)
   )
 
 emmissions_box_dat <- emmissions_dat %>% 
@@ -408,13 +408,13 @@ emmissions_box_dat <- emmissions_dat %>%
 
 # Calculate medians for coloring
 median_data <- emmissions_box_dat %>%
-  group_by(continent, cluster_name) %>%
+  group_by(Region, cluster_name) %>%
   summarize(median_odiac = median(odiac_norm, na.rm = TRUE), .groups = "drop")
 
 # Join medians back
 emmissions_box_dat <- emmissions_box_dat %>%
-  left_join(median_data, by = c("continent", "cluster_name")) %>% 
-  group_by(continent, cluster_name) %>%
+  left_join(median_data, by = c("Region", "cluster_name")) %>% 
+  group_by(Region, cluster_name) %>%
   mutate(
     Q1 = quantile(odiac_norm, 0.25, na.rm = TRUE),
     Q3 = quantile(odiac_norm, 0.75, na.rm = TRUE),
@@ -446,7 +446,7 @@ p_emissions_box <- ggplot(emmissions_box_dat, aes(x = cluster_name, y = odiac_no
     x = "",
     y = "Emissions p.c. (t CO₂ p.a.)"
   ) +
-  facet_wrap(~continent, nrow = 1) +
+  facet_wrap(~Region, nrow = 1) +
   theme_SM() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "none")
@@ -653,30 +653,30 @@ multi_panel_plot <- plot_grid(plotlist = box_plot_list, ncol = 2, labels = "auto
 ggsave(multi_panel_plot, filename = "plots/multi_panel_plot.pdf", width = 10, height = 8)
 
 ###############################################################################
-# mean probs across continents
+# mean probs across Regions: TODO - move to ucertainty script
 ################################################################################
 
-# Summarize count per continent and cluster_name
+# Summarize count per Region and cluster_name
 count_df <- desc_geo %>%
   as.data.frame() %>%
-  group_by(continent, cluster_name) %>%
+  group_by(Region, cluster_name) %>%
   summarise(n = n(), .groups = "drop")
 
 # Plot with annotation
 p_mean_prob_cont <- desc_geo %>%
   as.data.frame() %>%
-  ggplot(aes(x = continent, y = mean_prob, group = continent)) +
+  ggplot(aes(x = Region, y = mean_prob, group = Region)) +
   geom_boxplot(outlier.size = 0.5) +
   facet_wrap(~cluster_name) +
   geom_text(
     data = count_df,
-    aes(x = continent, y = 0.95, label = paste0("n = ", n)),
+    aes(x = Region, y = 0.95, label = paste0("n = ", n)),
     inherit.aes = FALSE,
     size = 3
   ) +
   labs(
-    title = "Mean probability by Continent and Cluster",
-    x = "Continent",
+    title = "Mean probability by Region and Cluster",
+    x = "Region",
     y = "Probability distribution"
   ) +
   ylim(c(0.25, 1)) + 
@@ -712,10 +712,10 @@ plot_covariate_boxplot <- function(box_plot_add_covs_dat, selected_cluster, high
     geom_hline(yintercept = 1, lty = 2) +
     geom_violin(alpha = 0.9, color = NA, scale = "width", aes(fill = clustering)) +
     scale_fill_manual(values = c("#ffe0a3", "cornflowerblue")) +
-    geom_boxplot(width = 0.15, outlier.size = 0.5, color = "grey", outlier.shape = NA) +
+    geom_boxplot(width = 0.15, outliers = FALSE) +
     geom_point(
       data = highlight_df,
-      aes(x = variable, y = highlight_val, shape = "Highlight"),
+      aes(x = variable, y = highlight_val, shape = "Example city"),
       size = 2, fill = "darkred", color = "black", inherit.aes = FALSE
     ) +
     geom_label(
@@ -724,19 +724,25 @@ plot_covariate_boxplot <- function(box_plot_add_covs_dat, selected_cluster, high
       vjust = -0.8, size = 2.2, fill = "white", color = "black",
       label.size = 0.25, alpha = 0.7, inherit.aes = FALSE
     ) +
-    scale_shape_manual(values = c("Highlight" = 21), name = "") +
+    scale_shape_manual(values = c("Example city" = 21), name = "") +
     scale_y_continuous(
       # trans = "log2",
       # breaks = c(0.125, 0.25, 0.5, 1, 2, 4, 8, 16),
       # labels = c("1/8", "1/4", "1/2", "1", "2", "4", "8", "16"),
-      limits = c(-5, 30)
+      # limits = c(-5, 30)
     ) +
     theme_SM() +
     theme(
       axis.text.x = element_text(angle = 25, hjust = 1),
-      legend.position = c(1, -.3),
+      legend.position = c(.95, .85),
       legend.justification = "right",
       legend.box.just = "right",
+      legend.direction = "horizontal", 
+      legend.byrow = T,
+      # legend.position = "bottom",
+      # legend.direction = "horizontal",
+      legend.box = "horizontal",
+      # legend.justification = "center"
       # axis.text = element_text(size = 7),
       # axis.title = element_text(size = 9),
       # plot.margin = margin(c(-4, 0, -2, 1), "cm")
@@ -751,17 +757,18 @@ plot_covariate_boxplot <- function(box_plot_add_covs_dat, selected_cluster, high
 }
 
 
-plot_multiple_cities <- function(city_names, ghsl_data, covariate_data, output_dir = "plots") {
+plot_multiple_cities <- function(city_names, ghsl, covariate_data, output_dir = "plots") {
   # Create output directory if it doesn't exist
   if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE)
   }
   
+  plot_list <- list()
   for (i in seq_along(city_names)) {
     city_name <- city_names[i]
     
     # Get the corresponding ID
-    highlight_id <- unique(ghsl_data$ID_UC_G0[ghsl_data$GC_UCN_MAI_2025 == city_name])
+    highlight_id <- unique(ghsl$ID_UC_G0[ghsl$GC_UCN_MAI_2025 == city_name])
     highlight_id <- highlight_id[!is.na(highlight_id)]
     
     if (length(highlight_id) == 0) {
@@ -789,32 +796,54 @@ plot_multiple_cities <- function(city_names, ghsl_data, covariate_data, output_d
       city_name = paste0(city_name, " - ", selected_cluster)
     )
     
-    # Save plot as PDF
-    output_file <- file.path(output_dir, paste0("ex", i, ".pdf"))
-    ggsave(output_file, plot = p, width = 10, height = 5)
+    # # compute lower and upper whiskers
+    # limits = boxplot.stats(covariate_data %>% filter(cluster_name == selected_cluster) %>% pull(value))$stats[c(1, 5)]
+    iqr_limits <- covariate_data %>%
+      filter(cluster_name == selected_cluster) %>%
+      summarise(
+        Q1 = quantile(normalized_value, 0.25, na.rm = TRUE),
+        Q3 = quantile(normalized_value, 0.75, na.rm = TRUE)
+      ) %>%
+      mutate(
+        IQR = Q3 - Q1,
+        lower = Q1 - 20 * IQR,
+        upper = Q3 + 20 * IQR
+      )
+
+    filtered_data <- covariate_data %>%
+      # filter(cluster_name == selected_cluster) %>%
+      filter(value >= iqr_limits$lower & value <= iqr_limits$upper)
     
-    message(paste0("Saved: ", output_file))
+    
+    # scale y limits based on ylim1
+    p = p + coord_cartesian(ylim = c(min(filtered_data$value), max(filtered_data$value)))
+    
+    plot_list[[i]] <- p
+    
   }
+  
+  # Save plot as PDF
+  output_file <- plot_grid(plotlist = plot_list, ncol = 2, labels = "auto", align = "v")
+  ggsave(output_file, file = "plots/figA3.pdf", width = 10, height = 12)
+  
 }
 
 # Vector of city names to plot
-cities_to_plot <- c("Gqeberha", "Paris", "Addis Ababa", "Malabo", "Gqeberha", "Greensboro", "Spring Hill", "Concord")
-
+city_names <- c("Zanzibar City", "Tangail", "Bethlehem", "Drobeta-Turnu Severin", "Solwezi", "Takht Bhai", "Abidjan", "Medan"
+                # "Paris", "Addis Ababa", "Gqeberha", "Gqeberha", "Greensboro", "Spring Hill", "Concord"
+                )
 
 # Run batch plotting
 plot_multiple_cities(
-  city_names = cities_to_plot,
-  ghsl_data = ghsl,
+  city_names = city_names,
+  ghsl = ghsl,
   covariate_data = box_plot_add_covs_dat,
   output_dir = "plots"
 )
 
-ghsl$GC_POP_TOT_2025[grepl("Addis", ghsl$GC_UCN_MAI_2025)]
-
-ghsl$ID_UC_G0[grepl("Paris", ghsl$GC_UCN_MAI_2025)]
 
 ##################################################################
-# type by continent
+# type by Region
 ##################################################################
 
 clust
