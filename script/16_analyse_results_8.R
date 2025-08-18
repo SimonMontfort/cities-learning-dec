@@ -485,7 +485,7 @@ p_emissions_box <- ggplot(emmissions_box_dat, aes(x = cluster_name, y = odiac_no
   ) +
   labs(
     x = "",
-    y = "Emissions p.c. (t CO₂)"
+    y = "Emissions p.c. (t CO₂ p.a.)"
   ) +
   facet_wrap(~continent, nrow = 1) +
   theme_SM() +
