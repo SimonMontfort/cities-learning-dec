@@ -217,6 +217,20 @@ ipcc_regions %>%
     stat = "sf_coordinates", alpha=.5, size = 2,
   ) 
 
+clust_probs <- clust %>%
+  pivot_longer(
+    cols = starts_with("mean_prob_cluster_"),
+    names_to = "secondary_cluster",
+    names_prefix = "mean_prob_cluster_",
+    values_to = "mean_prob"
+  ) %>% 
+  select(-similarity, -entropy) %>% 
+  mutate(secondary_cluster = as.numeric(secondary_cluster)) %>% 
+  left_join(cluster_names, by = c("secondary_cluster"="consensus_label_majority")) %>% 
+  rename(secondary_cluster_name = cluster_name) %>% 
+  left_join(cluster_names, by = c("consensus_label_majority")) 
+
+
 clust <- clust %>%
   pivot_longer(
     cols = starts_with("mean_prob_cluster_"),
@@ -649,8 +663,8 @@ for (cluster in cluster_names$cluster_name) {
 
 # order
 box_plot_list <- box_plot_list[levels(cluster_names$cluster_name)]
-multi_panel_plot <- plot_grid(plotlist = box_plot_list, ncol = 2, labels = "auto", align = "v")
-ggsave(multi_panel_plot, filename = "plots/multi_panel_plot.pdf", width = 10, height = 8)
+fig1 <- plot_grid(plotlist = box_plot_list, ncol = 2, labels = "auto", align = "v")
+ggsave(fig1, filename = "plots/fig1.pdf", width = 10, height = 8)
 
 ###############################################################################
 # mean probs across Regions: TODO - move to ucertainty script
@@ -689,23 +703,58 @@ ggsave(p_mean_prob_cont, file = "plots/p_mean_prob_cont.pdf", width = 10, height
 # examples
 ##################################################################
 
-plot_covariate_boxplot <- function(box_plot_add_covs_dat, selected_cluster, highlight_id = NULL, city_name) {
+plot_covariate_boxplot <- function(box_plot_add_covs_dat, clust_probs, selected_cluster, highlight_id = NULL, city_name) {
   # Filter data for the selected cluster
   cluster_data <- box_plot_add_covs_dat %>%
-    filter(cluster_name == selected_cluster) %>%
-    select(-cluster_name)
+    filter(cluster_name == selected_cluster) 
   
   # If highlight_id is provided, get that observation
   if (!is.null(highlight_id)) {
     highlight_df <- cluster_data %>%
       filter(GHS_urban_area_id == highlight_id) %>% 
-      mutate(highlight_val = normalized_value)  #
+      mutate(highlight_val = normalized_value)
+    
+    highlight_types <- clust_probs %>% 
+      filter(GHS_urban_area_id == highlight_id) 
+    
   } else {
-    # Otherwise, compute mean
-    highlight_df <- cluster_data %>%
-      group_by(variable) %>%
-      summarise(highlight_val = mean(normalized_value, na.rm = TRUE), .groups = "drop")
+    stop("must provide city id")
   }
+  
+  rad <- highlight_types %>%
+    select(secondary_cluster_name, mean_prob) %>%
+    ggplot(aes(x = secondary_cluster_name, y = mean_prob)) +
+    geom_col(color = "black", fill = "lightgrey", width = 0.7) +
+    geom_text(aes(label = scales::percent(mean_prob, accuracy = 1)),
+              vjust = -0.5, size = 2) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0,1)) +
+    labs(x = NULL, y = "", title = "Type") +
+    theme_SM() +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1),
+          axis.ticks.length = unit(.5, "mm"),
+          axis.text = element_text(size = 8),
+          axis.title = element_text(size = 8),
+          plot.title = element_text(size = 10))
+  
+  # # compute lower and upper whiskers
+  # limits = boxplot.stats(covariate_data %>% filter(cluster_name == selected_cluster) %>% pull(value))$stats[c(1, 5)]
+  iqr_limits <- cluster_data %>%
+    filter(cluster_name == selected_cluster) %>%
+    summarise(
+      Q1 = quantile(normalized_value, 0.25, na.rm = TRUE),
+      Q3 = quantile(normalized_value, 0.75, na.rm = TRUE)
+    ) %>%
+    mutate(
+      IQR = Q3 - Q1,
+      lower = Q1 - 10 * IQR,
+      upper = Q3 + 15 * IQR
+    )
+
+  filtered_data <- box_plot_add_covs_dat %>%
+    # filter(cluster_name == selected_cluster) %>%
+    filter(value >= iqr_limits$lower & value <= iqr_limits$upper)
+
+
   
   # Create plot
   p <- ggplot(cluster_data, aes(x = variable, y = normalized_value)) +
@@ -739,13 +788,11 @@ plot_covariate_boxplot <- function(box_plot_add_covs_dat, selected_cluster, high
       legend.box.just = "right",
       legend.direction = "horizontal", 
       legend.byrow = T,
-      # legend.position = "bottom",
-      # legend.direction = "horizontal",
       legend.box = "horizontal",
-      # legend.justification = "center"
-      # axis.text = element_text(size = 7),
-      # axis.title = element_text(size = 9),
-      # plot.margin = margin(c(-4, 0, -2, 1), "cm")
+      axis.ticks.length = unit(.5, "mm"),
+      axis.text = element_text(size = 8),
+      axis.title = element_text(size = 8), 
+      plot.title = element_text(size = 10)
     ) +
     labs(
       x = "",
@@ -753,16 +800,17 @@ plot_covariate_boxplot <- function(box_plot_add_covs_dat, selected_cluster, high
       title = city_name
     )
   
-  return(p)
+  # scale y limits based on ylim1
+  p = p + coord_cartesian(ylim = c(min(filtered_data$value), max(filtered_data$value)))
+  
+  p_ins = ggarrange(p, rad, align = "h", widths = c(3, 1.2))
+  
+  return(p_ins)
 }
 
 
-plot_multiple_cities <- function(city_names, ghsl, covariate_data, output_dir = "plots") {
-  # Create output directory if it doesn't exist
-  if (!dir.exists(output_dir)) {
-    dir.create(output_dir, recursive = TRUE)
-  }
-  
+plot_multiple_cities <- function(city_names, ghsl, clust_probs, covariate_data, output_dir = "plots") {
+
   plot_list <- list()
   for (i in seq_along(city_names)) {
     city_name <- city_names[i]
@@ -770,6 +818,10 @@ plot_multiple_cities <- function(city_names, ghsl, covariate_data, output_dir = 
     # Get the corresponding ID
     highlight_id <- unique(ghsl$ID_UC_G0[ghsl$GC_UCN_MAI_2025 == city_name])
     highlight_id <- highlight_id[!is.na(highlight_id)]
+    
+    if(length(highlight_id)>1){
+      print("Warning: City name does not uniquely identify.")
+    }
     
     if (length(highlight_id) == 0) {
       message(paste0("Skipping '", city_name, "' — no valid highlight_id found."))
@@ -790,33 +842,12 @@ plot_multiple_cities <- function(city_names, ghsl, covariate_data, output_dir = 
     
     # Generate plot
     p <- plot_covariate_boxplot(
-      box_plot_add_covs_dat = covariate_data,
+      box_plot_add_covs_dat,
       selected_cluster = selected_cluster,
+      clust_probs = clust_probs, 
       highlight_id = highlight_id,
       city_name = paste0(city_name, " - ", selected_cluster)
     )
-    
-    # # compute lower and upper whiskers
-    # limits = boxplot.stats(covariate_data %>% filter(cluster_name == selected_cluster) %>% pull(value))$stats[c(1, 5)]
-    iqr_limits <- covariate_data %>%
-      filter(cluster_name == selected_cluster) %>%
-      summarise(
-        Q1 = quantile(normalized_value, 0.25, na.rm = TRUE),
-        Q3 = quantile(normalized_value, 0.75, na.rm = TRUE)
-      ) %>%
-      mutate(
-        IQR = Q3 - Q1,
-        lower = Q1 - 20 * IQR,
-        upper = Q3 + 20 * IQR
-      )
-
-    filtered_data <- covariate_data %>%
-      # filter(cluster_name == selected_cluster) %>%
-      filter(value >= iqr_limits$lower & value <= iqr_limits$upper)
-    
-    
-    # scale y limits based on ylim1
-    p = p + coord_cartesian(ylim = c(min(filtered_data$value), max(filtered_data$value)))
     
     plot_list[[i]] <- p
     
@@ -837,16 +868,12 @@ city_names <- c("Zanzibar City", "Tangail", "Bethlehem", "Drobeta-Turnu Severin"
 plot_multiple_cities(
   city_names = city_names,
   ghsl = ghsl,
+  clust_probs = clust_probs, 
   covariate_data = box_plot_add_covs_dat,
   output_dir = "plots"
 )
 
 
-##################################################################
-# type by Region
-##################################################################
-
-clust
 
 ##################################################################
 # type by continent
