@@ -1149,112 +1149,112 @@ ggsave("plots/p_pop_and_city_share_cont.pdf", p_pop_and_city_share_cont, height 
 ################################################################################
 # types by IPCC region
 ################################################################################
-
-ipcc_regions <- st_transform(ipcc_regions, crs = 4326)
-desc_geo <- st_transform(desc_geo, crs = 4326)
-
-# Assuming desc_geo is a dataframe with lat/long and consensus_label_majority
-desc_geo_sf <- st_as_sf(desc_geo, coords = c("longitude", "latitude"), crs = 4326)
-
-# Assuming ipcc_regions is an sf object with the polygons of the regions
-ipcc_regions <- st_make_valid(ipcc_regions)
-desc_geo_sf <- st_make_valid(desc_geo_sf)
-desc_geo_sf <- st_join(desc_geo_sf, ipcc_regions) 
-
-desc_geo_sf <- desc_geo_sf %>% 
-  mutate(Acronym = ifelse(Acronym %in% c("EPO", "NPO"), "PAC", Acronym)) 
-
-cluster_share_most_prevalent <- desc_geo_sf %>%
-  as.data.frame() %>%
-  group_by(Acronym, consensus_label_majority) %>%
-  summarise(n = n()) %>%
-  group_by(Acronym) %>%
-  mutate(share = n/sum(n)) %>% 
-  arrange(-share, .by_group = T) %>% 
-  slice(1:3) %>% 
-  mutate(triangle_3_id = row_number())
-
-ipcc_regions_hexa_split <- ipcc_regions_hexa_split %>% 
-  # check this, probably needs to be broader and also include the other island cities
-  mutate(label = ifelse(label %in% c("EPO", "NPO"), "PAC", label)) %>% 
-  mutate(triangle_3_id  = case_when(triangle_id <=2 ~ 1, 
-                                    triangle_id >2 & triangle_id <5 ~ 2,
-                                    triangle_id >=5 ~ 3,)) %>% 
-  left_join(cluster_share_most_prevalent, by = c("label" = "Acronym", "triangle_3_id")) 
-
-# Function to scale triangle inward from centroid using share
-scale_triangle <- function(triangle, share) {
-  coords <- st_coordinates(triangle)[, 1:2]
-  
-  # Get points
-  p1 <- coords[1, ]
-  p2 <- coords[2, ]
-  centroid <- coords[3, ]  # assumed order is [p1, p2, centroid, p1]
-  
-  # Compute scaled points
-  s <- share
-  new_p1 <- centroid + s * (p1 - centroid)
-  new_p2 <- centroid + s * (p2 - centroid)
-  
-  # Make polygon
-  new_coords <- rbind(new_p1, new_p2, centroid, new_p1)
-  st_polygon(list(new_coords)) %>% st_sfc(crs = st_crs(triangle))
-}
-
-# Apply to each triangle
-scaled_triangles <- purrr::pmap_dfr(ipcc_regions_hexa_split, function(geom, share, hex_id, triangle_id, label, triangle_3_id, consensus_label_majority,...) {
-  if (is.na(share)) return(NULL)
-  new_geom <- scale_triangle(geom, share)
-  st_sf(geometry = new_geom, share = share, hex_id = hex_id, triangle_id = triangle_id, label = label, triangle_3_id = triangle_3_id, consensus_label_majority = consensus_label_majority)
-})
-
-# reassign crs
-scaled_triangles <- st_set_crs(scaled_triangles, st_crs(ipcc_regions_hexa_split))
-
-# group by the same types
-scaled_triangles <- scaled_triangles %>% 
-  group_by(hex_id, triangle_3_id) %>% 
-  summarise(geometry = st_union(geometry), 
-            share = first(share), 
-            label = first(label), 
-            consensus_label_majority = first(consensus_label_majority)) %>% 
-  left_join(cluster_names, by = "consensus_label_majority")
-
-
-
-library(ggpattern)
-library(ggsci)
-p_regional_types <- ggplot() + 
-  geom_sf(data = ipcc_regions_hexa, fill = NA) + 
-  # geom_sf(data = scaled_triangles, aes(fill = as.factor(consensus_label_majority))) +
-  geom_sf_pattern(
-    data = scaled_triangles,
-    aes(pattern_colour = as.factor(cluster_name),
-        pattern_angle = as.factor(cluster_name)
-      ),
-    pattern_density = .2,
-    pattern_spacing = 0.01,
-    # pattern_alpha = .5,
-    pattern_size = .05,
-    pattern_fill = "grey", 
-    pattern_key_scale_factor = 0.6, 
-    lwd = .5
-  ) +
-  scale_fill_npg() +
-  geom_sf(data = ipcc_regions_hexa_groupings) +
-  geom_label(
-    data = ipcc_regions_hexa_groupings,
-    aes(label = Name, x = auxiliary_storage_labeling_positionx, y = auxiliary_storage_labeling_positiony),
-    alpha=.5, size = 2, label.size = NA
-  ) + 
-  theme_SM() + 
-  labs(x= "", y = "") + 
-  theme(panel.border = element_blank(), 
-        axis.ticks = element_blank(), 
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(), 
-        legend.position = "bottom")
-ggsave(p_regional_types, filename = "plots/p_regional_types.pdf", width = 10, height = 5)
+# 
+# ipcc_regions <- st_transform(ipcc_regions, crs = 4326)
+# desc_geo <- st_transform(desc_geo, crs = 4326)
+# 
+# # Assuming desc_geo is a dataframe with lat/long and consensus_label_majority
+# desc_geo_sf <- st_as_sf(desc_geo, coords = c("longitude", "latitude"), crs = 4326)
+# 
+# # Assuming ipcc_regions is an sf object with the polygons of the regions
+# ipcc_regions <- st_make_valid(ipcc_regions)
+# desc_geo_sf <- st_make_valid(desc_geo_sf)
+# desc_geo_sf <- st_join(desc_geo_sf, ipcc_regions) 
+# 
+# desc_geo_sf <- desc_geo_sf %>% 
+#   mutate(Acronym = ifelse(Acronym %in% c("EPO", "NPO"), "PAC", Acronym)) 
+# 
+# cluster_share_most_prevalent <- desc_geo_sf %>%
+#   as.data.frame() %>%
+#   group_by(Acronym, consensus_label_majority) %>%
+#   summarise(n = n()) %>%
+#   group_by(Acronym) %>%
+#   mutate(share = n/sum(n)) %>% 
+#   arrange(-share, .by_group = T) %>% 
+#   slice(1:3) %>% 
+#   mutate(triangle_3_id = row_number())
+# 
+# ipcc_regions_hexa_split <- ipcc_regions_hexa_split %>% 
+#   # check this, probably needs to be broader and also include the other island cities
+#   mutate(label = ifelse(label %in% c("EPO", "NPO"), "PAC", label)) %>% 
+#   mutate(triangle_3_id  = case_when(triangle_id <=2 ~ 1, 
+#                                     triangle_id >2 & triangle_id <5 ~ 2,
+#                                     triangle_id >=5 ~ 3,)) %>% 
+#   left_join(cluster_share_most_prevalent, by = c("label" = "Acronym", "triangle_3_id")) 
+# 
+# # Function to scale triangle inward from centroid using share
+# scale_triangle <- function(triangle, share) {
+#   coords <- st_coordinates(triangle)[, 1:2]
+#   
+#   # Get points
+#   p1 <- coords[1, ]
+#   p2 <- coords[2, ]
+#   centroid <- coords[3, ]  # assumed order is [p1, p2, centroid, p1]
+#   
+#   # Compute scaled points
+#   s <- share
+#   new_p1 <- centroid + s * (p1 - centroid)
+#   new_p2 <- centroid + s * (p2 - centroid)
+#   
+#   # Make polygon
+#   new_coords <- rbind(new_p1, new_p2, centroid, new_p1)
+#   st_polygon(list(new_coords)) %>% st_sfc(crs = st_crs(triangle))
+# }
+# 
+# # Apply to each triangle
+# scaled_triangles <- purrr::pmap_dfr(ipcc_regions_hexa_split, function(geom, share, hex_id, triangle_id, label, triangle_3_id, consensus_label_majority,...) {
+#   if (is.na(share)) return(NULL)
+#   new_geom <- scale_triangle(geom, share)
+#   st_sf(geometry = new_geom, share = share, hex_id = hex_id, triangle_id = triangle_id, label = label, triangle_3_id = triangle_3_id, consensus_label_majority = consensus_label_majority)
+# })
+# 
+# # reassign crs
+# scaled_triangles <- st_set_crs(scaled_triangles, st_crs(ipcc_regions_hexa_split))
+# 
+# # group by the same types
+# scaled_triangles <- scaled_triangles %>% 
+#   group_by(hex_id, triangle_3_id) %>% 
+#   summarise(geometry = st_union(geometry), 
+#             share = first(share), 
+#             label = first(label), 
+#             consensus_label_majority = first(consensus_label_majority)) %>% 
+#   left_join(cluster_names, by = "consensus_label_majority")
+# 
+# 
+# 
+# library(ggpattern)
+# library(ggsci)
+# p_regional_types <- ggplot() + 
+#   geom_sf(data = ipcc_regions_hexa, fill = NA) + 
+#   # geom_sf(data = scaled_triangles, aes(fill = as.factor(consensus_label_majority))) +
+#   geom_sf_pattern(
+#     data = scaled_triangles,
+#     aes(pattern_colour = as.factor(cluster_name),
+#         pattern_angle = as.factor(cluster_name)
+#       ),
+#     pattern_density = .2,
+#     pattern_spacing = 0.01,
+#     # pattern_alpha = .5,
+#     pattern_size = .05,
+#     pattern_fill = "grey", 
+#     pattern_key_scale_factor = 0.6, 
+#     lwd = .5
+#   ) +
+#   scale_fill_npg() +
+#   geom_sf(data = ipcc_regions_hexa_groupings) +
+#   geom_label(
+#     data = ipcc_regions_hexa_groupings,
+#     aes(label = Name, x = auxiliary_storage_labeling_positionx, y = auxiliary_storage_labeling_positiony),
+#     alpha=.5, size = 2, label.size = NA
+#   ) + 
+#   theme_SM() + 
+#   labs(x= "", y = "") + 
+#   theme(panel.border = element_blank(), 
+#         axis.ticks = element_blank(), 
+#         axis.text.x = element_blank(),
+#         axis.text.y = element_blank(), 
+#         legend.position = "bottom")
+# ggsave(p_regional_types, filename = "plots/p_regional_types.pdf", width = 10, height = 5)
 
 ################################################################################
 # learning potential by cluster overall
@@ -1277,35 +1277,6 @@ ggsave(p_regional_types, filename = "plots/p_regional_types.pdf", width = 10, he
 # p_cities_per_cluster_share
 # ggsave(p_cities_per_cluster_share, file = "plots/p_cities_per_cluster_share.pdf", width = 10, height = 6)
 
-library(ggpp)
-p_cities_per_cluster_n <- clust %>%  
-  # left_join(n_studies_per_city, by = c("GHS_urban_area_id" = "city_id")) %>%  
-  mutate(any_study_true = ifelse(n_studies > 1 & !is.na(n_studies), "Has research", "No research")) %>%  
-  group_by(consensus_label_majority, any_study_true) %>%  
-  summarise(n_cities = n(), .groups = "drop") %>%  
-  group_by(consensus_label_majority) %>%  
-  mutate(
-    total_cities = sum(n_cities),
-    pct = round((n_cities / total_cities) * 100, 0),
-    label = paste0(pct, "%")
-  ) %>% 
-  left_join(cluster_names, by = "consensus_label_majority") %>% 
-  ggplot(aes(x = cluster_name, y = n_cities, fill = any_study_true)) +  
-  geom_bar(stat = "identity", position = "stack", width = .5, , col = "black", size=0.1, alpha = .5) +  
-  geom_text(aes(label = label, y = ifelse(n_cities <200, n_cities + 300, n_cities)), 
-            position = position_stacknudge(x = .4, vjust = 0.5), 
-            size = 2.5, 
-            color = "black") +
-  scale_fill_manual(values = c("#a892c7", "#f2f2f0")) +  
-  coord_flip() +  
-  # scale_x_discrete(limits=rev) +
-  theme_SM() + 
-  theme(legend.title = element_text(), 
-        legend.position = "none", 
-        axis.title = element_text(size = 10)) +
-  labs(x = "Cluster", y = "Number of Cities", fill = "Cities covered in case studies", subtitle = "Number of cities")
-p_cities_per_cluster_n
-ggsave(p_cities_per_cluster_n, file = "plots/p_cities_per_cluster_n.pdf", width = 5, height = 5)
 
 clust_with_topics <- clust %>%
   left_join(clean_places, by = c("GHS_urban_area_id" = "city_id")) %>%
@@ -1360,8 +1331,8 @@ p_over_under_researched_by_clust <- left_join(n_case_studies_per_cluster, n_citi
 
 ggsave(p_over_under_researched_by_clust, file = "plots/p_over_under_researched_by_clust.pdf", width = 5, height = 5)
 
-p_cities_and_over_under_per_clus <- ggarrange(p_cities_per_cluster_n, p_over_under_researched_by_clust, labels = c("a", "b"))
-ggsave(p_cities_and_over_under_per_clus, file = "plots/p_cities_and_over_under_per_clus.pdf", width = 10, height = 5)
+# p_cities_and_over_under_per_clus <- ggarrange(p_cities_per_cluster_n, p_over_under_researched_by_clust, labels = c("a", "b"))
+# ggsave(p_cities_and_over_under_per_clus, file = "plots/p_cities_and_over_under_per_clus.pdf", width = 10, height = 5)
 
 ################################################################################
 # learning potential by cluster by g1 topic
@@ -1942,464 +1913,383 @@ p_g2_topics_2 <- group2_by_c_dat %>%
 p_g2_topics <- ggarrange(p_g2_topics_1, p_g2_topics_2)
 ggsave(p_g2_topics, file = "plots/p_topics_fine.pdf", width = 10, height = 14)
 
-clust %>% 
+################################################################################
+# Cities per cluster with and without research
+################################################################################
+
+p_cities_per_cluster_n <- clust %>% 
+  mutate(
+    any_study_true = ifelse(n_studies > 1 & !is.na(n_studies), "Has research", "No research")
+  ) %>% 
+  group_by(consensus_label_majority, any_study_true) %>% 
+  summarise(n_cities = n(), .groups = "drop") %>% 
+  group_by(consensus_label_majority) %>% 
+  mutate(
+    total_cities = sum(n_cities),
+    pct = round((n_cities / total_cities) * 100, 0),
+    label = paste0(pct, "%")
+  ) %>% 
   left_join(cluster_names, by = "consensus_label_majority") %>% 
-  group_by(cluster_name) %>% 
-  summarise(n_studies = sum(n_studies)) %>% 
+  mutate(
+    any_study = any_study_true,
+    any_study = case_when(
+      any_study_true == "Has research" & cluster_name == "Mitigation first" ~ "Mitigation first cities with research",
+      any_study_true == "Has research" & cluster_name == "Mega all in" ~ "Mega all in cities with research",
+      any_study_true == "Has research" & cluster_name == "Development first" ~ "Development first cities with research",
+      any_study_true == "Has research" & cluster_name == "Urban planning first" ~ "Urban planning first cities with research",
+      TRUE ~ any_study
+    ),
+    any_study = factor(
+      any_study,
+      levels = c(
+        "Development first cities with research", 
+        "Mitigation first cities with research", 
+        "Urban planning first cities with research",
+        "Mega all in cities with research", 
+        "No research"
+      )
+    ),
+    cluster_name = factor(cluster_name, levels = rev(levels(cluster_name)))
+  ) %>% 
+  ggplot(aes(x = cluster_name, y = n_cities, fill = any_study)) + 
+  geom_bar(stat = "identity", position = "stack", width = .5, col = "black", size = 0.1) + 
+  geom_text(
+    aes(label = label, y = ifelse(n_cities < 200, n_cities + 300, n_cities)),
+    position = position_stacknudge(x = .4, vjust = 0.5),
+    size = 2.5,
+    color = "black"
+  ) +
+  scale_fill_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#f2f2f0")) +
+  coord_flip() +
+  scale_y_continuous(labels = label_number(suffix = "K", scale = 1e-3)) +
+  theme_SM() +
+  theme(
+    legend.title = element_text(),
+    legend.position = "none",
+    axis.title = element_text(size = 10)
+  ) +
+  labs(x = "", y = "", fill = "Cities covered in case studies", subtitle = "Number of cities")
+
+ggsave(p_cities_per_cluster_n, file = "plots/p_cities_per_cluster_n.pdf", width = 5, height = 5)
+
 
 ################################################################################
-# agg learning index
+# Number of studies per cluster
 ################################################################################
 
 p_n_studies <- clust %>% 
   left_join(cluster_names, by = "consensus_label_majority") %>% 
   group_by(cluster_name) %>% 
   summarise(n_studies = sum(n_studies)) %>% 
-  ggplot(aes(x = cluster_name, y = n_studies)) +
-  geom_bar(stat = "identity", position = "stack", width = .5, col = "black", fill = "#a892c7", size=0.1, alpha = .5) +
+  mutate(cluster_name = factor(cluster_name, levels = rev(levels(cluster_name)))) %>% 
+  ggplot(aes(x = cluster_name, y = n_studies, fill = cluster_name)) +
+  geom_bar(stat = "identity", width = .5, col = "black", size = 0.1) +
   coord_flip() +
+  scale_fill_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")) + 
+  scale_y_continuous(labels = label_number(suffix = "K", scale = 1e-3)) +
   theme_SM() +
-  theme(legend.title = element_text(),
-        legend.position = "none", 
-        axis.title = element_text(size = 10)) +
-  labs(x = "", y = "Studies", subtitle = "Total number of studies per cluster")
+  theme(
+    legend.title = element_text(),
+    legend.position = "none",
+    axis.title = element_text(size = 10)
+  ) +
+  labs(x = "", y = "", subtitle = "Total number of studies")
 
-# Set the cluster to analyz
+
+################################################################################
+# Cluster cities & research metrics
+################################################################################
+
 cluster_cities <- ghsl %>%
   mutate(geom = st_centroid(geom)) %>%
-  dplyr::select(ID_UC_G0, geom) %>%
+  select(ID_UC_G0, geom) %>%
   left_join(clust_with_topics, by = c("ID_UC_G0" = "GHS_urban_area_id"))
 
-# Step 2: Count publications per city-topic pair
 pub_counts <- cluster_cities %>%
   as.data.frame() %>% 
   filter(!is.na(group2)) %>%
   group_by(ID_UC_G0, group2) %>% 
-  summarise(topic_count = n())
+  summarise(topic_count = n(), .groups = "drop")
 
-# Step 3: Create city-topic matrix (wide format)
 city_topic_matrix <- pub_counts %>%
-  pivot_wider(names_from = "group2", values_from = "topic_count", values_fill = 0)
+  pivot_wider(names_from = "group2", values_from = "topic_count", values_fill = 0) %>%
+  right_join(ghsl %>% select(ID_UC_G0), by = "ID_UC_G0") %>%
+  mutate(across(where(is.numeric), ~ replace_na(., 0)),
+         ID_UC_G0 = as.character(ID_UC_G0))
 
-city_topic_matrix <- ghsl %>% 
-  dplyr::select(ID_UC_G0) %>% 
-  left_join(city_topic_matrix, by = "ID_UC_G0") %>% 
-  # mutate(has_research = ifelse(is.na(has_research), F, has_research)) %>% 
-  mutate(ID_UC_G0 = as.character(ID_UC_G0)) %>% 
-  mutate_if(is.numeric, .funs = function(x){ifelse(is.na(x), 0, x)})
-
-# Step 4: Compute research volume and evenness per city
 research_metrics <- city_topic_matrix %>%
   as.data.frame() %>% 
   rowwise() %>%
   mutate(
     research_volume = sum(c_across(where(is.numeric))),
-    # Gini-based evenness
     research_evenness = {
       counts <- c_across(where(is.numeric))
       if (sum(counts) == 0) 0 else (1 - ineq::Gini(counts))
     }
   ) %>%
   ungroup() %>%
-  dplyr::select(ID_UC_G0, research_volume, research_evenness)
+  select(ID_UC_G0, research_volume, research_evenness)
 
-# Step 5: Compute similarity scores between cities based on co_vars
+################################################################################
+# Similarity scores & Teaching/Learning Potentials
+################################################################################
+
 co_mat <- cluster_cities %>%
-  as.data.frame() %>% 
-  dplyr::select(ID_UC_G0, all_of(co_vars), consensus_label_majority) %>%
+  as.data.frame() %>%
+  select(ID_UC_G0, all_of(co_vars), consensus_label_majority) %>%
   distinct() %>%
-  inner_join(research_metrics %>% mutate(ID_UC_G0 = as.numeric(ID_UC_G0)), by = "ID_UC_G0") %>% 
-  mutate(research_volume = min_max_scale(research_volume)) %>% 
+  inner_join(research_metrics %>% mutate(ID_UC_G0 = as.numeric(ID_UC_G0)), by = "ID_UC_G0") %>%
   left_join(cluster_names, by = "consensus_label_majority")
 
-# Scale and compute similarity
 sim_matrix <- proxy::simil(
-  as.matrix(co_mat %>% dplyr::select(all_of(co_vars)) %>% scale()),
+  as.matrix(co_mat %>% select(all_of(co_vars)) %>% scale()),
   method = "cosine",
   by_rows = TRUE
 )
 
-similarity_sums <- rowSums(as.matrix(sim_matrix), na.rm = T)
+similarity_sums <- rowSums(as.matrix(sim_matrix), na.rm = TRUE)
 
-
-# Final TPI and LPI
-co_mat <-  co_mat %>%
+co_mat <- co_mat %>%
   mutate(
-    similarity_decile = min_max_scale(similarity_sums),  # ranks from .1 to 1
-    research_volume_decile = min_max_scale(research_volume),  # ranks from .1 to 1
+    similarity_decile = min_max_scale(similarity_sums),
+    research_volume_decile = min_max_scale(research_volume),
     teaching_volume_potential = research_volume,
     teaching_diversity_potential = research_evenness,
-    learning_volume_potential = mean(co_mat$research_volume, na.rm = TRUE),
-    learning_diversity_potential = mean(co_mat$research_evenness, na.rm = TRUE)
+    learning_volume_potential = sum(research_volume, na.rm = TRUE),
+    learning_diversity_potential = sum(research_evenness, na.rm = TRUE)
   )
 
-co_mat %>%
-  left_join(ghsl %>% dplyr::select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = "ID_UC_G0") %>% 
-  dplyr::select(consensus_label_majority, GC_UCN_MAI_2025, GC_CNT_GAD_2025, similarity_decile, research_volume_decile, research_volume, research_evenness,
-                learning_volume_potential, learning_diversity_potential) %>%
-  group_by(consensus_label_majority) %>% 
-  arrange(desc(learning_volume_potential)) %>%
-  slice(1:5) %>% 
-  as.data.frame()
-
-co_mat %>%
-  left_join(ghsl %>% dplyr::select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = "ID_UC_G0") %>% 
-  dplyr::select(consensus_label_majority, GC_UCN_MAI_2025, GC_CNT_GAD_2025, similarity_decile, research_volume_decile, research_volume, research_evenness,
-                teaching_volume_potential, teaching_diversity_potential) %>%
-  group_by(consensus_label_majority) %>% 
-  arrange(desc(teaching_volume_potential), ) %>%
-  slice(1:5) %>% 
-  as.data.frame()
-
-teach_potential_volume <- co_mat %>%
-  mutate(has_research = ifelse(research_volume == 0, F, T)) %>%
-  filter(has_research) %>%
-  group_by(cluster_name, has_research) %>%
-  summarise(teaching_volume_potential = sum(teaching_volume_potential)) %>%
-  ggplot(aes(x = cluster_name, y = teaching_volume_potential, fill = has_research)) +
-  geom_bar(stat = "identity", position = "stack", width = .5, col = "black", size=0.1, alpha = .5) +
-  scale_fill_manual(values = c("#a892c7")) +  
+similarity_by_type <- co_mat %>%
+  group_by(cluster_name) %>%
+  summarise(similarity_decile = mean(similarity_decile), .groups = "drop") %>%
+  mutate(cluster_name = factor(cluster_name, levels = rev(levels(cluster_name)))) %>%
+  ggplot(aes(x = cluster_name, y = similarity_decile, fill = cluster_name)) +
+  geom_bar(stat = "identity", width = .5, col = "black", size = 0.1) +
+  scale_fill_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")) +
   coord_flip() +
-  # scale_x_discrete(limits=rev) +
-  # scale_x_continuous(n.breaks = length(unique(clust$consensus_label_majority))) +
   theme_SM() +
-  theme(legend.title = element_text(),
-        legend.position = "none", 
-        axis.title = element_text(size = 10)) +
-  labs(x = "", y = "Number of studies", fill = "has research", subtitle = "Teaching: similarity-weighted\nnumber of studies")
-teach_potential_volume
-
-# teach_potential_evenness <- co_mat %>%
-#   mutate(has_research = ifelse(research_volume == 0, F, T)) %>%
-#   filter(has_research) %>%
-#   group_by(cluster_name, has_research) %>%
-#   summarise(teaching_diversity_potential = sum(teaching_diversity_potential)) %>%
-#   ggplot(aes(x = factor(cluster_name), y = teaching_diversity_potential, fill = has_research)) +
-#   geom_bar(stat = "identity", position = "stack", width = .5, col = "black", alpha = .5) +
-#   scale_fill_manual(values = c("#1b9e77")) +
-#   coord_flip() +
-#   scale_x_discrete(limits=rev) +
-#   # scale_x_continuous(n.breaks = length(unique(clust$consensus_label_majority))) +
-#   # scale_y_continuous(labels = scales::label_number(scale = 1e-3, suffix = "k")) +
-#   theme_SM() +
-#   theme(legend.title = element_text(),
-#         legend.position = "none", 
-#         axis.title = element_text(size = 10)) +
-#   labs(x = "", y = "Gini score", fill = "has research", subtitle = "Teaching: diversity\nof the topics")
-# teach_potential_evenness
-
-learn_potential_volume <- co_mat %>%
-  mutate(has_research = ifelse(research_volume == 0, F, T)) %>%
-  group_by(cluster_name, has_research) %>%
-  summarise(learning_volume_potential = sum(learning_volume_potential)) %>%
-  ggplot(aes(x = cluster_name, y = learning_volume_potential, fill = has_research)) +
-  geom_bar(stat = "identity", position = "dodge", width = .5, col = "black", size=0.1, alpha = .5) +
-  scale_fill_manual(values = c("#a892c7", "#f2f2f0")) +  
-  coord_flip() +
-  # scale_x_discrete(limits=rev) +
-  # scale_x_continuous(n.breaks = length(unique(clust$consensus_label_majority))) +
-  # scale_y_continuous(labels = scales::percent) +
-  theme_SM() +
-  theme(legend.title = element_text(),
-        legend.position = c(.8,.1), 
-        axis.title = element_text(size = 10)) +
-  labs(x = "", y = "Number of studies", fill = "has research", subtitle = "Learning: similarity-weighted\nnumber of studies")
-learn_potential_volume
-
-# learn_potential_evenness <- co_mat %>%
-#   mutate(has_research = ifelse(research_volume == 0, F, T)) %>%
-#   group_by(cluster_name, has_research) %>%
-#   summarise(learning_diversity_potential = mean(learning_diversity_potential)) %>%
-#   ggplot(aes(x = cluster_name, y = learning_diversity_potential, fill = has_research)) +
-#   geom_bar(stat = "identity", position = "dodge", width = .6, col = "black", alpha = .5) +
-#   scale_fill_manual(values = c("#8c8c8c", "#1b9e77")) +
-#   coord_flip() +
-#   scale_x_discrete(limits=rev) +
-#   # scale_x_continuous(n.breaks = length(unique(clust$consensus_label_majority))) +
-#   theme_SM() +
-#   theme(legend.title = element_text(),
-#         legend.position = "none", 
-#         axis.title = element_text(size = 10)) +
-#   labs(x = "", y = "Gini score", subtitle = "Learning: diversity\nof the topics")
-# learn_potential_evenness
-
-p_learning_potential <- ggarrange(p_cities_per_cluster_n, 
-                                  p_over_under_researched_by_clust, p_n_studies,
-                                  align = "h", labels = c("a", "b", "c"),
-                                  # widths = c(1.9,1,1)
-                                  nrow = 1
-                                  )
-ggsave(p_learning_potential, file = "plots/p_learning_potential.pdf", width = 10, height = 8)
-
-
+  theme(
+    legend.title = element_text(),
+    legend.position = "none",
+    axis.title = element_text(size = 10)
+  ) +
+  labs(x = "", y = "", subtitle = "Similarity to all cities")
 
 
 ################################################################################
-# learning potential on map 
+# Learning potential on map
 ################################################################################
 
 
 learn_pot <- co_mat %>%
-  left_join(ghsl %>% dplyr::select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = "ID_UC_G0") %>% 
-  dplyr::select(ID_UC_G0, consensus_label_majority, similarity_decile, research_volume, research_volume_decile, research_evenness,
-         learning_volume_potential, learning_diversity_potential, teaching_volume_potential, 
-         # learning_index, teaching_index
-         ) %>%
-  group_by(consensus_label_majority) %>% 
-  arrange(desc(learning_volume_potential)) 
+  left_join(ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = "ID_UC_G0")
 
-ghsl %>% 
-  st_transform(proj_robin) %>% 
-  dplyr::select(ID_UC_G0, GC_UCN_MAI_2025) %>% 
-  mutate(geom = st_centroid(geom)) %>% 
-  left_join(learn_pot, by = "ID_UC_G0") %>% 
-  ggplot(aes(col = learning_volume_potential)) +
-  geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +  # World map with light gray color
-  geom_sf() +
-  geom_sf(data = bb, col = "grey40", fill = "transparent", linewidth = 1) +
-  theme_SM() + labs(y = "", x = "") +
-  theme(legend.position = "none", 
-        axis.text.x = element_blank(),
-        axis.ticks.length = unit(0, "cm"),
-        axis.text.y = element_blank(),
-        text = element_text(size = 8),
-        panel.spacing = unit(-0.15, "lines"),
-        panel.border = element_blank(),
-        plot.margin = margin(c(-1,0,0,0), "cm")
-  ) 
-
-library(sf)
-library(gstat)
-library(raster)
-library(ggplot2)
-library(terra)
-library(dplyr)
-
-interpolate_learning_potential <- function(ghsl, 
-                                           learn_pot, 
-                                           bb, 
-                                           world,
-                                           proj_crs = "+proj=robin",
-                                           res = 50000, 
-                                           id_col = "ID_UC_G0",
-                                           value_col = "learning_volume_potential") {
-  # Transform and join
-  ghsl_df <- ghsl %>%
-    st_transform(proj_crs) %>%
-    mutate(geom = st_centroid(geom)) %>%
-    left_join(learn_pot %>% dplyr::select(all_of(id_col), all_of(value_col)),
-              by = id_col) %>%
-    mutate(
-      x = st_coordinates(geom)[, 1],
-      y = st_coordinates(geom)[, 2]
-    ) %>%
-    st_drop_geometry()
-  
-  # Convert to SpatialPointsDataFrame
-  coordinates(ghsl_df) <- ~x + y
-  proj4string(ghsl_df) <- CRS(proj_crs)
-  gridded(ghsl_df) <- FALSE
-  
-  # Define world extent (Robinson approx bounds)
-  x_range <- c(-17000000, 17000000)
-  y_range <- c(-9000000, 9000000)
-  
-  # Create grid
-  x_seq <- seq(x_range[1], x_range[2], by = res)
-  y_seq <- seq(y_range[1], y_range[2], by = res)
-  grid_df <- expand.grid(x = x_seq, y = y_seq)
-  
-  coordinates(grid_df) <- ~x + y
-  proj4string(grid_df) <- CRS(proj_crs)
-  gridded(grid_df) <- TRUE
-  
-  # Interpolation (IDW)
-  f <- as.formula(paste(value_col, "~ 1"))
-  idw_result <- idw(formula = f, locations = ghsl_df, newdata = grid_df)
-  
-  # Convert to raster and then sf polygons
-  r <- raster(idw_result)
-  r_poly <- rasterToPolygons(r, dissolve = TRUE)
-  r_sf <- st_as_sf(r_poly)
-  r_sf <- st_set_crs(r_sf, proj_crs)
-  
-  # Clip by bounding box
-  is_not_within <- st_intersects(r_sf, bb)
-  is_not_within <- sapply(is_not_within, is_empty)
-  r_sf2 <- r_sf %>% filter(!is_not_within)
-  
-  # Plot
-  p <- ggplot() +
-    geom_sf(data = world %>% st_union(), fill = "white", color = "black", size = .3, alpha = .2) +
-    geom_sf(data = r_sf2, aes(fill = var1.pred, col = var1.pred), alpha = .9) +
-    scale_fill_viridis_c() +
-    scale_color_viridis_c() +
-    # geom_sf(data = bb, fill = NA, color = "grey30", linewidth = 1) +
-    labs(fill = "Learning potential", col = "Learning potential") +
-    theme_minimal() + 
-    theme(
-      legend.position = c(0.2, 0),
-      legend.direction = "horizontal",
-      legend.title = element_text(),
-      axis.text.x = element_blank(),
-      axis.ticks.length = unit(0, "cm"),
-      axis.text.y = element_blank(),
-      text = element_text(size = 8),
-      panel.spacing = unit(-0.15, "lines"),
-      panel.border = element_blank(),
-      plot.margin = margin(c(-1, 0, 0, 0), "cm")
-    )
-  
-  return(p)
-}
-
-p_similarity <- interpolate_learning_potential(
-  ghsl = ghsl,
-  learn_pot = learn_pot,
-  bb = bb,
-  world = world,
-  res = 50000,
-  value_col = "similarity_decile"
-)
-p_similarity
-
-p_learn_volume <- interpolate_learning_potential(
-  ghsl = ghsl,
-  learn_pot = learn_pot,
-  bb = bb,
-  world = world,
-  res = 50000,
-  value_col = "learning_volume_potential"
-)
-
-p_teach_volume <- interpolate_learning_potential(
-  ghsl = ghsl,
-  learn_pot = learn_pot,
-  bb = bb,
-  world = world,
-  res = 50000,
-  value_col = "teaching_volume_potential"
-)
-
-p_similarity
-p_learn_volume
-p_teach_volume
-
-#
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-library(sf)
-library(gstat)
-library(raster)
-library(ggplot2)
-library(terra)
-
-# Extract coordinates and create SpatialPointsDataFrame
-ghsl_df <- ghsl %>%
+map_dot_dat <- ghsl %>%
   st_transform(proj_robin) %>%
+  select(ID_UC_G0, GC_UCN_MAI_2025) %>%
   mutate(geom = st_centroid(geom)) %>%
-  left_join(learn_pot %>% dplyr::select(ID_UC_G0, learning_volume_potential), by = "ID_UC_G0") %>%
-  mutate(
-    x = st_coordinates(geom)[, 1],
-    y = st_coordinates(geom)[, 2]
+  left_join(learn_pot, by = "ID_UC_G0") %>%
+  mutate(has_research = research_volume != 0)
+
+p_types_as_dots_with_research <- ggplot() +
+  geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
+  geom_sf(
+    data = map_dot_dat %>% filter(has_research),
+    aes(col = cluster_name, size = research_volume),
+    alpha = .5
+  ) +
+  scale_size_continuous(range = c(0.01, 5)) +
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")) +
+  geom_sf(data = bb, col = "grey40", fill = "transparent", linewidth = 1) +
+  theme_SM() +
+  labs(
+    y = "", x = "", col = "City type", size = "Number of studies",
+    title = "Research coverage of global cities by type"
+  ) +
+  guides(color = guide_legend(order = 1), size = guide_legend(order = 2)) +
+  theme(
+    legend.position = c(.05, .35),
+    legend.direction = "vertical",
+    legend.justification = "left",
+    legend.title = element_text(),
+    legend.box = "vertical",
+    legend.spacing.y = unit(0.1, "cm"),
+    legend.background = element_blank(),
+    legend.box.background = element_rect(fill = "white", color = "grey", size = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.length = unit(0, "cm"),
+    text = element_text(size = 8),
+    panel.spacing = unit(-0.15, "lines"),
+    panel.border = element_blank(),
+    plot.margin = margin(c(-1, 0, 0, 0), "cm")
+  )
+
+p_types_as_dots_without_research <- ggplot() +
+  geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
+  geom_sf(
+    data = map_dot_dat %>% filter(!has_research),
+    aes(col = cluster_name),
+    size = .01
+  ) +
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")) +
+  geom_sf(data = bb, col = "grey40", fill = "transparent", linewidth = 1) +
+  theme_SM() +
+  labs(
+    y = "", x = "", col = "City type",
+    title = "Cities not covered by any studies"
+  ) +
+  theme(
+    legend.position = c(.05, .8),
+    legend.direction = "vertical",
+    legend.justification = "left",
+    legend.title = element_text(),
+    legend.box = "vertical",
+    legend.spacing.y = unit(0.1, "cm"),
+    legend.background = element_blank(),
+    legend.box.background = element_rect(fill = "white", color = "grey", size = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.length = unit(0, "cm"),
+    text = element_text(size = 8),
+    panel.spacing = unit(-0.15, "lines"),
+    panel.border = element_blank(),
+    plot.margin = margin(c(-1, 0, 0, 0), "cm")
+  )
+
+
+################################################################################
+# Hex grid and maps
+################################################################################
+
+world <- st_transform(world, proj_robin)
+
+world_hex <- st_make_grid(
+  world,
+  n = c(190, 190),
+  what = "polygons",
+  square = FALSE,
+  flat_topped = TRUE
+) %>%
+  st_as_sf() %>%
+  mutate(hex_id = seq_len(n()))
+
+ghsl_points <- ghsl %>%
+  st_transform(proj_robin) %>%
+  st_centroid() %>%
+  select(ID_UC_G0, GC_UCN_MAI_2025) %>%
+  left_join(learn_pot, by = "ID_UC_G0") %>%
+  st_centroid()
+
+intersections <- st_intersection(
+  ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025) %>% st_transform(proj_robin),
+  world_hex
+) %>%
+  mutate(inter_area = st_area(geom))
+
+intersections_unique <- intersections %>%
+  group_by(ID_UC_G0) %>%
+  slice_max(inter_area, n = 1) %>%
+  ungroup() %>%
+  as.data.frame() %>%
+  select(-geom)
+
+hexa_data <- world_hex %>%
+  left_join(intersections_unique, by = "hex_id") %>%
+  left_join(co_mat, by = "ID_UC_G0") %>%
+  group_by(hex_id) %>%
+  summarise(
+    research_volume = mean(research_volume, na.rm = TRUE),
+    similarity_decile = mean(similarity_decile, na.rm = TRUE),
+    .groups = "drop"
   ) %>%
-  st_drop_geometry()  # Drop sf geometry to make a pure data.frame
+  filter(!is.na(similarity_decile))
 
-# Convert to SpatialPointsDataFrame
-coordinates(ghsl_df) <- ~x + y
-proj4string(ghsl_df) <- CRS("+proj=robin")
+p_similarity_map <- hexa_data %>%
+  ggplot() +
+  geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
+  geom_sf(aes(fill = similarity_decile), color = NA) +
+  scale_fill_viridis_c(option = "C", na.value = "grey") +
+  geom_sf(data = bb, col = "grey40", fill = "transparent", linewidth = 1) +
+  theme_SM() +
+  labs(y = "", x = "", fill = "Similarity to all other cities", title = "Similarity to all other cities") +
+  theme(
+    legend.justification = "center",
+    legend.direction = "horizontal",
+    legend.position = c(.05, .1),
+    legend.title = element_text(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.length = unit(0, "cm"),
+    text = element_text(size = 8),
+    panel.spacing = unit(-0.15, "lines"),
+    panel.border = element_blank(),
+    plot.margin = margin(c(-1, 0, 0, 0), "cm")
+  )
 
-gridded(ghsl_df) <- FALSE
+p_missing_cites_map <- hexa_data %>%
+  filter(research_volume == 0) %>%
+  mutate(no_research = "No case studies identified") %>%
+  ggplot() +
+  geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
+  geom_sf(aes(fill = no_research), color = NA) +
+  scale_fill_manual(values = "grey") +
+  geom_sf(data = bb, col = "grey40", fill = "transparent", linewidth = 1) +
+  theme_SM() +
+  labs(y = "", x = "", fill = "", title = "Cities without any research") +
+  theme(
+    legend.justification = "center",
+    legend.direction = "horizontal",
+    legend.position = c(.5, .1),
+    legend.title = element_text(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.length = unit(0, "cm"),
+    text = element_text(size = 8),
+    panel.spacing = unit(-0.15, "lines"),
+    panel.border = element_blank(),
+    plot.margin = margin(c(-1, 0, 0, 0), "cm")
+  )
 
-# Define world extent in Robinson projection
-# Approximate bounds for Robinson projection
-x_range <- c(-17000000, 17000000)
-y_range <- c(-9000000, 9000000)
 
-# Define resolution (in meters, adjust as needed)
-res <- 50000  # 
+################################################################################
+# Combine plots into Figure 2
+################################################################################
 
-# Create grid
-x_seq <- seq(x_range[1], x_range[2], by = res)
-y_seq <- seq(y_range[1], y_range[2], by = res)
-grid_df <- expand.grid(x = x_seq, y = y_seq)
+fig2bc <- ggarrange(
+  p_similarity_map,
+  p_types_as_dots_without_research + theme(legend.position = "none"),
+  labels = c("b", "c")
+)
 
-coordinates(grid_df) <- ~x + y
-proj4string(grid_df) <- CRS("+proj=robin")
-gridded(grid_df) <- TRUE
+fig2abc <- ggarrange(
+  p_types_as_dots_with_research,
+  fig2bc,
+  labels = c("a", ""),
+  ncol = 1,
+  heights = c(2.2, 1)
+)
 
-# Interpolate (e.g., IDW)
-idw_result <- idw(formula = learning_volume_potential ~ 1, locations = ghsl_df, newdata = grid_df)
+fig2def <- ggarrange(
+  p_n_studies + theme(text = element_text(size = 9), axis.title.x = element_text(size = 9)),
+  similarity_by_type + theme(text = element_text(size = 9), axis.title.x = element_text(size = 9)),
+  p_cities_per_cluster_n + theme(text = element_text(size = 9), axis.title.x = element_text(size = 9)),
+  align = "h", labels = c("c", "d", "e"),
+  ncol = 1
+)
 
-# Convert to raster
-r <- raster(idw_result)
+fig2 <- ggarrange(fig2abc, fig2def, labels = c("", ""), ncol = 2, widths = c(3, 1))
 
-# Assume r is your RasterLayer
-r_poly <- rasterToPolygons(r, dissolve = TRUE)
-r_sf <- st_as_sf(r_poly)
-r_sf <- st_set_crs(r_sf, proj_robin)
-is_not_within <- st_intersects(r_sf, bb)
-is_not_within <- sapply(is_not_within, is_empty)
-r_sf2 <- r_sf %>% filter(!is_not_within)
+ggsave(fig2, file = "plots/fig2.pdf", height = 6, width = 10)
 
-# Plot in ggplot
-p_aggregate_learning_potential <- ggplot() +
-  geom_sf(data = world %>% st_union(), fill = "white", color = "black", size = .3, alpha = .2) +  # World map with light gray color
-  geom_sf(data = r_sf2, aes(fill = var1.pred, col = var1.pred), alpha = .9) +
-  scale_fill_viridis_c() +
-  scale_color_viridis_c() +
-  geom_sf(data = bb, fill = NA, color = "grey30", linewidth = 1) +
-  labs(fill = "Learning potential", col = "Learning potential") + 
-  theme_SM() + 
-  theme(legend.position = c(0.2,0),
-        legend.direction = "horizontal",
-        legend.title = element_text(),
-        axis.text.x = element_blank(),
-        axis.ticks.length = unit(0, "cm"),
-        axis.text.y = element_blank(),
-        text = element_text(size = 8),
-        panel.spacing = unit(-0.15, "lines"),
-        panel.border = element_blank(),
-        plot.margin = margin(c(-1,0,0,0), "cm")
-  ) 
 
-p_aggregate_learning_potential
-ggsave(p_aggregate_learning_potential, file = "plots/p_aggregate_learning_potential.pdf", width = 10, height = 6)
 
-p_learning <- ggarrange(p_aggregate_learning_potential,
-          p_learning_potential, 
-            # theme(axis.text = element_text(size = 10),
-                  # strip.text = element_text(size = 10)),
-          ncol = 1, heights = c(1,1.5))
-ggsave(p_learning, file = "plots/p_learning.pdf", width = 10, height = 11)
+
+
+
+
+
+
 
 
 
@@ -2633,31 +2523,6 @@ p_solutions_by_ipcc_region_and_cluster <- ggarrange(p_solutions_by_ipcc_region_a
 ggsave(p_solutions_by_ipcc_region_and_cluster, file = "plots/p_solutions_by_ipcc_region_and_cluster.pdf", width = 10, height = 9)
 
 
-# # Optional: make prettier solution_type labels
-# solution_summary <- solution_summary %>%
-#   mutate(
-#     solution_type = recode(solution_type,
-#                            contains_compact = "Compact City",
-#                            contains_electrific = "Transport Electrification",
-#                            contains_build = "Green Buildings",
-#                            contains_blue_green = "Blue-Green Infra"
-#     )
-#   )
-# 
-# # Step 4: Plot
-# ggplot(solution_summary, aes(x = solution_type, y = n_cities, fill = as.factor(consensus_label_majority))) +
-#   geom_col(position = "dodge") +
-#   facet_wrap(~Name, scales = "free_y") +
-#   labs(
-#     title = "Cities Documenting Each Urban Solution by Cluster and IPCC Region",
-#     x = "Solution Type",
-#     y = "Number of Cities",
-#     fill = "Cluster"
-#   ) +
-#   theme_minimal(base_size = 12) +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-# 
-
 
 # ################################################################################
 # # learning potential based on topics from the topic model 
@@ -2831,6 +2696,122 @@ ggsave(map_learning_potential_build, file = "plots/map_learning_potential_builds
 
 
 
+
+################################################################################
+# learning interpolated grid
+################################################################################
+
+library(sf)
+library(gstat)
+library(raster)
+library(ggplot2)
+library(terra)
+library(dplyr)
+
+interpolate_learning_potential <- function(ghsl, 
+                                           learn_pot, 
+                                           bb, 
+                                           world,
+                                           proj_crs = "+proj=robin",
+                                           res = 50000, 
+                                           id_col = "ID_UC_G0",
+                                           value_col = "similarity_decile") {
+  # Transform and join
+  ghsl_df <- ghsl %>%
+    st_transform(proj_crs) %>%
+    mutate(geom = st_centroid(geom)) %>%
+    left_join(learn_pot %>% dplyr::select(all_of(id_col), all_of(value_col)),
+              by = id_col) %>%
+    mutate(
+      x = st_coordinates(geom)[, 1],
+      y = st_coordinates(geom)[, 2]
+    ) %>%
+    st_drop_geometry()
+  
+  # Convert to SpatialPointsDataFrame
+  coordinates(ghsl_df) <- ~x + y
+  proj4string(ghsl_df) <- CRS(proj_crs)
+  gridded(ghsl_df) <- FALSE
+  
+  # Define world extent (Robinson approx bounds)
+  x_range <- c(-17000000, 17000000)
+  y_range <- c(-9000000, 9000000)
+  
+  # Create grid
+  x_seq <- seq(x_range[1], x_range[2], by = res)
+  y_seq <- seq(y_range[1], y_range[2], by = res)
+  grid_df <- expand.grid(x = x_seq, y = y_seq)
+  
+  coordinates(grid_df) <- ~x + y
+  proj4string(grid_df) <- CRS(proj_crs)
+  gridded(grid_df) <- TRUE
+  
+  # Interpolation (IDW)
+  f <- as.formula(paste(value_col, "~ 1"))
+  idw_result <- idw(formula = f, locations = ghsl_df, newdata = grid_df)
+  
+  # Convert to raster and then sf polygons
+  r <- raster(idw_result)
+  r_poly <- rasterToPolygons(r, dissolve = TRUE)
+  r_sf <- st_as_sf(r_poly)
+  r_sf <- st_set_crs(r_sf, proj_crs)
+  
+  # Clip by bounding box
+  is_not_within <- st_intersects(r_sf, bb)
+  is_not_within <- sapply(is_not_within, is_empty)
+  r_sf2 <- r_sf %>% filter(!is_not_within)
+  
+  # Plot
+  p <- ggplot() +
+    geom_sf(data = world %>% st_union(), fill = "white", color = "black", size = .3, alpha = .2) +
+    geom_sf(data = r_sf2, aes(fill = var1.pred, col = var1.pred), alpha = .9) +
+    scale_fill_viridis_c() +
+    scale_color_viridis_c() +
+    # geom_sf(data = bb, fill = NA, color = "grey30", linewidth = 1) +
+    labs(fill = "Learning potential", col = "Learning potential") +
+    theme_minimal() + 
+    theme(
+      legend.position = c(0.2, 0),
+      legend.direction = "horizontal",
+      legend.title = element_text(),
+      axis.text.x = element_blank(),
+      axis.ticks.length = unit(0, "cm"),
+      axis.text.y = element_blank(),
+      text = element_text(size = 8),
+      panel.spacing = unit(-0.15, "lines"),
+      panel.border = element_blank(),
+      plot.margin = margin(c(-1, 0, 0, 0), "cm")
+    )
+  
+  return(p)
+}
+
+p_similarity <- interpolate_learning_potential(
+  ghsl = ghsl,
+  learn_pot = learn_pot,
+  bb = bb,
+  world = world,
+  res = 50000,
+  value_col = "similarity_decile"
+)
+p_similarity
+
+p_research_volume <- interpolate_learning_potential(
+  ghsl = ghsl,
+  learn_pot = learn_pot,
+  bb = bb,
+  world = world,
+  res = 50000,
+  value_col = "research_volume"
+)
+p_research_volume
+
+
+p_similarity
+p_learn_volume
+p_teach_volume
+
+################################################################################
 
 
 
