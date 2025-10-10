@@ -83,7 +83,6 @@ case_studies <- oa %>%
   filter(!is.na(city_ids)) %>%
   as_tibble()
 
-
 ################################################################################
 # download specs (e.g. citations)
 ################################################################################
@@ -118,17 +117,15 @@ authors <- article_specs %>%
 ################################################################################
 
 case_studies_clean <- case_studies %>% 
-  left_join(authors, by = c("id" = "article_id")) %>% 
+  # left_join(authors, by = c("id" = "article_id")) %>% 
   left_join(article_specs %>% select(-authorships, -any_repository_has_fulltext, 
                                      -is_oa_anywhere, -referenced_works, -concepts), 
             by = "id") %>% 
-  select(OpenAlex_article_id = id, publication_year, publication_date, abstract = text, cited_by_count,
+  select(OpenAlex_article_id = id, publication_year, publication_date, authors, title, abstract = text, cited_by_count,
          type, oa_status, oa_url, language,
          city_names, countries, starts_with("Region"), starts_with("Type")
          )
   
-case_studies_clean
-
 
 # Second sheet: Case study literature
 cleaned_case_studies <- case_studies_clean %>%
@@ -149,4 +146,25 @@ wb$add_data(sheet = "Case study literature", x = cleaned_case_studies)
 # Save the workbook with both sheets
 wb$save("data/case_selection/case_selection_and_literature.xlsx")
 
+################################################################################
+# example cities
+################################################################################
+
+city_names_selected <- c("Makassar", "Cancún", "Shillong", "Mombasa", "Berlin", "Toronto", "Hong Kong", "Chongqing")
+
+ids_examples <- case_studies_clean %>% 
+  mutate(names_split = stri_split_fixed(city_names, ", ")) %>% 
+  # unnest(names_split) %>% 
+  select(OpenAlex_article_id, city_names
+         # publication_year, publication_date, authors, title, abstract, cited_by_count, names_split, city_names, 
+         # names_split
+         ) %>%
+  dplyr::filter(city_names %in% city_names_selected) %>% 
+  pull(OpenAlex_article_id)
+
+case_studies_examples <- case_studies_clean %>% 
+  filter(OpenAlex_article_id %in% ids_examples) %>% 
+  arrange(city_names)
+
+write_xlsx(case_studies_examples, file = "data/case_selection/case_studies_examples.xlsx")
 

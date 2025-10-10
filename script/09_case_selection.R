@@ -71,15 +71,15 @@ world <- st_transform(world, proj_robin)
 cluster_names <- data.frame(
   consensus_label_majority = 0:3,
   cluster_name = c(
-    "Mitigation first",
-    "Mega all in",
-    "Development first", 
-    "Urban planning first"
+    "Type 3",
+    "Type 4",
+    "Type 1", 
+    "Type 2"
   )) %>% 
-  mutate(cluster_name = factor(cluster_name, levels = c("Development first",
-                                                        "Mitigation first",
-                                                        "Urban planning first",
-                                                        "Mega all in")))
+  mutate(cluster_name = factor(cluster_name, levels = c("Type 1",
+                                                        "Type 2",
+                                                        "Type 3",
+                                                        "Type 4")))
 
 ##########################
 # custom plotting theme 
@@ -89,14 +89,14 @@ cluster_names <- data.frame(
 showtext_auto()  # Automatically use showtext for fonts
 
 # Check available fonts
-remotes::install_github("kjhealy/myriad")
-myriad::import_myriad(font_family = "Myriad Pro", silent = F)
+# remotes::install_github("kjhealy/myriad")
+# myriad::import_myriad(font_family = "Myriad Pro", silent = F)
 theme_SM <- function(){
   theme_light() +   
     theme(panel.grid = element_blank(),
           panel.border = element_rect(colour = "grey50", fill=NA, linewidth=.5),
           strip.placement = "outside",
-          text = element_text(size = 12, family = "Myriad Pro"),
+          # text = element_text(size = 12, family = "Myriad Pro"),
           axis.text.x = element_text(colour = "grey30", angle = 45, hjust = 1, vjust = 1),
           axis.text.y = element_text(colour = "grey30"),
           axis.ticks.length = unit(.2, "cm"),
@@ -167,6 +167,7 @@ clust_stud_pop <- clust %>%
   left_join(cites_ipcc_regions, by = "city_id")
 
 write.csv(clust_stud_pop, "data/clustering_results/cities_by_regional_type_clean.csv")
+
 
 ################################################################################
 # overall over and under-researched by cluster
@@ -314,7 +315,7 @@ plot_cluster_region_heatmap <- function(data, value_col, fill_label = NULL, titl
 sample_cities_by_share <- function(data, 
                                    n_total_cities = 100, 
                                    share_type = c("pop", "n_studies", "cities"), 
-                                   seed = NULL) {
+                                   min_studies_filter = NULL) {
   
   share_type <- match.arg(share_type)
   
@@ -406,9 +407,13 @@ sample_cities_by_share <- function(data,
   # Step 6: Combine allocations
   final_allocations <- bind_rows(small_alloc_detailed, share_data_rest)
   
-  print("=== Final allocation by region: ===")
-  print(final_allocations %>% group_by(Region) %>% summarise(total = sum(n_cities_sample)))
-  
+  # Apply n_studies filter *after allocation*, if requested
+  if (!is.null(min_studies_filter)) {
+    data <- data %>% filter(n_studies >= min_studies_filter)
+    # shortfall <- n_total_cities - nrow(eligible)
+    # print(paste("shortfall:", shortfall))
+  } 
+
   # Step 7: Sample cities
   sampled_data <- data %>%
     inner_join(final_allocations, by = c("consensus_label_majority", "Region")) %>%
@@ -419,24 +424,12 @@ sample_cities_by_share <- function(data,
     ungroup() %>%
     select(-row)
   
+
+  
   # Step 8: Ensure exactly n_total_cities are sampled
   sampled_data <- sampled_data %>%
-    distinct(city_id, .keep_all = TRUE)
-  
-  actual_n <- nrow(sampled_data)
-  
-  if (actual_n < n_total_cities) {
-    remaining_needed <- n_total_cities - actual_n
-    
-    print(paste("Topping up", remaining_needed, "cities due to shortfall..."))
-    
-    additional_data <- data %>%
-      filter(!city_id %in% sampled_data$city_id) %>%
-      arrange(probability) %>%
-      slice_head(n = remaining_needed)
-    
-    sampled_data <- bind_rows(sampled_data, additional_data)
-  }
+    distinct(city_id, .keep_all = TRUE) %>%
+    slice_head(n = n_total_cities)
   
   return(sampled_data %>%
            select(city_id, city_name, country, Region,
@@ -511,7 +504,7 @@ p_studies_per_cluster_region <- plot_cluster_region_heatmap(
   title = "Studies")
 
 
-# 2) Cities and studies in the selection -- get 300 representative cities and refine assignment
+# 2) Cities and studies in the selection -- get selected no of representative cities and refine assignment
 
 # get cities
 sampled_cities <- sample_cities_by_share(clust_stud_pop, 500, "pop")
@@ -592,9 +585,6 @@ p_selection_map <- ghsl %>%
   )
 ggsave(p_selection_map, file = "plots/p_selection_map.pdf", width = 10, height = 5.8)
 
-sampled_cities
-
-
 # Panel A: Distribution of n_studies across world regions
 p_a <- ggplot(sampled_cities, aes(x = Region, y = n_studies)) +
   geom_boxplot(fill = "#3182bd", alpha = 0.7, outliers = FALSE) +
@@ -637,3 +627,211 @@ wb$add_data(
 )
 
 wb$save("data/case_selection/case_selection_and_literature.xlsx", overwrite = TRUE)
+
+
+
+################################################################################
+# city characteristics
+################################################################################
+
+clust_prob <- clust %>%
+  pivot_longer(
+    cols = starts_with("mean_prob_cluster_"),
+    names_to = "secondary_cluster",
+    names_prefix = "mean_prob_cluster_",
+    values_to = "mean_prob"
+  ) %>% 
+  select(-similarity, -entropy) %>% 
+  mutate(secondary_cluster = as.numeric(secondary_cluster)) %>% 
+  left_join(cluster_names, by = c("secondary_cluster"="consensus_label_majority")) %>% 
+  rename(secondary_cluster_name = cluster_name) %>% 
+  left_join(cluster_names, by = c("consensus_label_majority")) %>% 
+  select(city_id, mean_prob, secondary_cluster_name, cluster_name)
+
+clust_prob_clean <- clust_prob %>% 
+  mutate(secondary_cluster_name = paste0("assignment_probability: ", secondary_cluster_name)) %>% 
+  pivot_wider(names_from = "secondary_cluster_name", values_from = "mean_prob") %>% 
+  left_join(ghsl, by = "city_id") %>% 
+  select(city_id, cluster_name, GC_UCN_MAI_2025, GC_CNT_GAD_2025,
+         "assignment_probability: Type 1", 
+         "assignment_probability: Type 2", 
+         "assignment_probability: Type 3", 
+         "assignment_probability: Type 4"
+  ) %>% 
+  left_join(cites_ipcc_regions, by = "city_id") %>% 
+  left_join(ghsl_clean, by = "city_id") %>% 
+  left_join(n_studies_per_city, by = "city_id") %>% 
+  mutate(n_studies = ifelse(is.na(n_studies), 0, n_studies)) %>% 
+  select(city_id, city_name = GC_UCN_MAI_2025, 
+         country_name = GC_CNT_GAD_2025, region = Region, cluster_name,
+         "assignment_probability: Type 1", 
+         "assignment_probability: Type 2", 
+         "assignment_probability: Type 3", 
+         "assignment_probability: Type 4",
+         number_of_studies = n_studies, 
+         population = GHS_population, population_growth = GHS_population_growth,
+         population_density = GHS_population_density, population_density_growth = GHS_population_density_growth,
+         GDP_PPP = GHS_GDP_PPP, GDP_PPP_growth = GHS_GDP_PPP_growth,
+         critical_infrastructure = GHS_critical_infra,
+         greenness_index = GHS_greenness_index, precipitation = GHS_precipitation,
+         heating_degree_days = hdd, cooling_degree_days = cdd)
+  
+clust_prob_clean
+
+# Load the workbook
+wb <- wb_load("data/case_selection/case_selection_and_literature.xlsx")
+
+wb$add_worksheet("Characteristics and types")
+wb$add_data(sheet = "Characteristics and types", x = clust_prob_clean)
+
+# Save the workbook with both sheets
+wb$save("data/case_selection/case_selection_and_literature.xlsx")
+
+
+################################################################################
+# for the paper, a lower number of cities are needed
+################################################################################
+
+# get cities
+sampled_cities <- sample_cities_by_share(clust_stud_pop, 70, "pop", min_studies_filter = 5)
+
+# cities covered
+p_population_selected_covered_cities_per_cluster_region <- plot_cluster_region_heatmap(
+  sampled_cities %>% mutate(city_yes = 1), 
+  city_yes, 
+  title = "Selected cities",
+  low = "#deebf7",
+  high = "#08519c")
+# studies covered
+p_population_selected_covered_studies_per_cluster_region <- plot_cluster_region_heatmap(
+  sampled_cities, 
+  n_studies, 
+  title = "Selected studies",
+  low = "#deebf7",
+  high = "#08519c")
+
+p_selection <- ggarrange(
+  p_pop_share_per_cluster_region, p_pop_per_cluster_region, 
+  p_cities_per_cluster_region, p_studies_per_cluster_region, 
+  p_population_selected_covered_cities_per_cluster_region,
+  p_population_selected_covered_studies_per_cluster_region,
+  nrow = 3,
+  ncol = 2,
+  labels = "auto")
+ggsave(p_selection, file = "plots/p_selection_paper.pdf", width = 10, height = 10)
+
+sampled_cities_clean <- sampled_cities %>%
+  left_join(clust_stud_pop) %>%
+  select(
+    city_id, city_name, country, region = Region,
+    city_type = cluster_name, number_of_studies = n_studies
+  ) %>% 
+  arrange(city_type, region, -number_of_studies)
+write.csv(sampled_cities_clean, "data/case_selection/selected_cites_paper.csv")
+
+
+################################################################################
+# case selection simple, 100 cities per type x region
+################################################################################
+
+simple_without_research <- clust_stud_pop %>%
+  group_by(Region, cluster_name) %>% 
+  arrange(probability) %>% 
+  slice_max(probability, n = 100) %>% 
+  as.data.frame() %>% 
+  select(city_name, Region, country, cluster_name, n_studies, population_in_mio = pop, assignment_probability = probability)
+
+simple_with_research <- clust_stud_pop %>%
+  group_by(Region, cluster_name) %>% 
+  arrange(probability) %>% 
+  filter(n_studies >= 10) %>% 
+  slice_max(probability, n = 50) %>% 
+  as.data.frame() %>% 
+  select(city_name, Region, country, cluster_name, n_studies, population_in_mio = pop, assignment_probability = probability)
+
+simple_with_research <- clust_stud_pop %>%
+  group_by(Region, cluster_name) %>% 
+  arrange(-probability) %>% 
+  filter(n_studies >= 10) %>% 
+  slice_min(probability, n = 50) %>% 
+  as.data.frame() %>% 
+  select(city_name, Region, country, cluster_name, n_studies, population_in_mio = pop, assignment_probability = probability)
+
+
+write.csv(simple_without_research, "data/case_selection/10_per_continent_and_cluster.csv")
+write.csv(simple_with_research, "data/case_selection/10_simple_with_research.csv")
+
+
+get_subsets <- function(df, study_filter, n = 25) {
+  df <- df %>%
+    filter(!!study_filter) %>%
+    arrange(probability)
+  
+  total <- nrow(df)
+  if (total == 0) return(df)
+  
+  if (total >= 2 * n) {
+    # enough rows: take n from each side
+    idx_low  <- seq_len(n)
+    idx_high <- seq(total - n + 1, total)
+  } else {
+    # not enough: split available rows into two halves
+    half <- floor(total / 2)
+    idx_low  <- seq_len(half)
+    idx_high <- seq(total - half + 1, total)
+  }
+  
+  df %>%
+    slice(c(idx_low, idx_high)) %>%
+    mutate(category = c(
+      rep("low", length(idx_low)),
+      rep("high", length(idx_high))
+    )) %>%
+    mutate(main_type_percentage = paste0(round(probability*100, 0), "%")) %>% 
+    select(city_name, Region, country, main_type = cluster_name,
+           n_studies, population_in_mio = pop,
+           main_type_percentage,
+           category)
+}
+
+
+clust_stud_pop %>% 
+  group_by(cluster_name) %>% 
+  summarise(median = )
+
+library(openxlsx)
+
+wb <- createWorkbook()
+
+for (reg in unique(clust_stud_pop$Region)) {
+  
+  region_data <- clust_stud_pop %>% filter(Region == reg)
+  
+  # Get subsets
+  no_study   <- get_subsets(region_data, quo(n_studies < 10),  25) %>%
+    mutate(category = ifelse(category == "low",
+                             "mixed type",
+                             "typical"),
+           less_than_10_studies = "yes")
+  
+  with_study <- get_subsets(region_data, quo(n_studies >= 10), 25) %>%
+    mutate(category = ifelse(category == "low",
+                             "mixed type",
+                             "typical"),
+           less_than_10_studies = "no")
+  
+  # Combine
+  combined <- bind_rows(no_study, with_study) %>% 
+    arrange(category, less_than_10_studies, main_type, main_type_percentage)
+  
+  # Add worksheet
+  addWorksheet(wb, reg)
+  writeData(wb, reg, combined)
+}
+
+# Save file
+saveWorkbook(wb, "city_probabilities_by_region.xlsx", overwrite = TRUE)
+
+
+
+
