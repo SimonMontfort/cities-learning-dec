@@ -34,23 +34,23 @@ setwd("/Users/simon/Documents/repo/cities-learning-dec")
 ##########################
 
 # Path to your geodatabase
-gdb_path <- "/Users/simon/Documents/big_data/USGSEsriWCMC_GlobalIslands_v3_mpk/USGSEsriWCMC_GlobalIslands_v3/v108/globalislandsfix.gdb"
-st_layers(gdb_path)
-
-very_small_islands <- st_read(gdb_path, "USGSEsriWCMC_GlobalIslandsv2_VerySmallIslands")
-small_islands <- st_read(gdb_path, "USGSEsriWCMC_GlobalIslandsv2_SmallIslands")
-big_islands <- st_read(gdb_path, "USGSEsriWCMC_GlobalIslandsv2_BigIslands")
-mainland <- st_read(gdb_path, "USGSEsriWCMC_GlobalIslandsv2_Continents")
-
+# gdb_path <- "/Users/simon/Documents/big_data/USGSEsriWCMC_GlobalIslands_v3_mpk/USGSEsriWCMC_GlobalIslands_v3/v108/globalislandsfix.gdb"
+# st_layers(gdb_path)
+# 
+# very_small_islands <- st_read(gdb_path, "USGSEsriWCMC_GlobalIslandsv2_VerySmallIslands")
+# small_islands <- st_read(gdb_path, "USGSEsriWCMC_GlobalIslandsv2_SmallIslands")
+# big_islands <- st_read(gdb_path, "USGSEsriWCMC_GlobalIslandsv2_BigIslands")
+# mainland <- st_read(gdb_path, "USGSEsriWCMC_GlobalIslandsv2_Continents")
+# 
 # st_write(very_small_islands, "data/islands/global_islands_db/very_small_islands.gpkg", layer_options = c("GEOMETRY_ENCODING=WKB"), delete_dsn = T)
 # st_write(small_islands, "data/islands/global_islands_db/small_islands.gpkg", layer_options = c("GEOMETRY_ENCODING=WKB"), delete_dsn = T)
 # st_write(big_islands, "data/islands/global_islands_db/big_islands.gpkg", layer_options = c("GEOMETRY_ENCODING=WKB"), delete_dsn = T)
 # st_write(mainland, "data/islands/global_islands_db/mainland.gpkg", layer_options = c("GEOMETRY_ENCODING=WKB"), delete_dsn = T)
 # 
-# very_small_islands <- st_read("data/islands/global_islands_db/very_small_islands.gpkg")
-# small_islands <- st_read("data/islands/global_islands_db/small_islands.gpkg")
-# big_islands <- st_read("data/islands/global_islands_db/big_islands.gpkg")
-# mainland <- st_read("data/islands/global_islands_db/mainland.gpkg")
+very_small_islands <- st_read("data/islands/global_islands_db/very_small_islands.gpkg")
+small_islands <- st_read("data/islands/global_islands_db/small_islands.gpkg")
+big_islands <- st_read("data/islands/global_islands_db/big_islands.gpkg")
+mainland <- st_read("data/islands/global_islands_db/mainland.gpkg")
 
 # cities
 ghsl <- st_read("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg")
