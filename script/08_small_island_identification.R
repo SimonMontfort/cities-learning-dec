@@ -72,8 +72,8 @@ simplify_in_chunks <- function(sf_obj, chunk_size = 5000, keep = 0.05) {
   do.call(rbind, simplified_chunks)
 }
 
-small_islands <- small_islands %>% mutate(area = as.numeric(st_area(Shape))/1e6)
-big_islands <- big_islands %>% mutate(area = as.numeric(st_area(Shape))/1e6)
+small_islands <- small_islands %>% mutate(area = as.numeric(st_area(geom))/1e6)
+big_islands <- big_islands %>% mutate(area = as.numeric(st_area(geom))/1e6)
 
 small_islands <- simplify_in_chunks(small_islands, chunk_size = 2000, keep = 0.05)
 big_islands <- st_simplify(big_islands, dTolerance = 2000, preserveTopology = TRUE)

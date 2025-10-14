@@ -791,30 +791,49 @@ get_subsets <- function(df, study_filter, n = 25) {
     select(city_name, Region, country, main_type = cluster_name,
            n_studies, population_in_mio = pop,
            main_type_percentage,
-           category)
+           category,
+           type_1_percentage = `assignment_probability: Type 1`, 
+           type_2_percentage = `assignment_probability: Type 2`, 
+           type_3_percentage = `assignment_probability: Type 3`, 
+           type_4_percentage = `assignment_probability: Type 4`
+           )
 }
 
 
-clust_stud_pop %>% 
-  group_by(cluster_name) %>% 
-  summarise(median = )
+clust_stud_pop <- clust_stud_pop %>%
+  left_join(clust_prob_clean %>%
+              select(city_id,
+                     `assignment_probability: Type 1`, `assignment_probability: Type 2`, 
+                     `assignment_probability: Type 3`, `assignment_probability: Type 4`), 
+            by = "city_id") %>% 
+  mutate_at(vars(`assignment_probability: Type 1`, `assignment_probability: Type 2`, 
+                 `assignment_probability: Type 3`, `assignment_probability: Type 4`), .funs = function(x){paste0(round(x*100, 0), "%")})
 
 library(openxlsx)
 
 wb <- createWorkbook()
 
+wrong_cities <- c("Abu Matarig", "Kyolo", "Kisenge", "Mutabi", "Kapoeta", "Iludun", "Nsioni", "Ngodo", "Ekwegbe", "Awomama", "Jesse", "Nine Mile Corner", "Kamiji", "", "Ore", # Africa
+                  "Marapicu", "Polvilho", # South America
+                  "Bhushan Steel City", "Agats", "Qingan", "Arun", "Morin Dawa", "Dunhua", "Xiuyan", "Benxi Manchu Autonomous County", "Antu", # Asia
+                  "Koçören", "Manchester", "Sal'sk", # Europe (Manchester is incorrectly assigned no studies)
+                  "San José del Valle" # North America 
+                  ) 
+
 for (reg in unique(clust_stud_pop$Region)) {
   
   region_data <- clust_stud_pop %>% filter(Region == reg)
   
+  # region_data <- region_data %>% filter(!city_name %in% wrong_cities)
+  
   # Get subsets
-  no_study   <- get_subsets(region_data, quo(n_studies < 10),  25) %>%
+  no_study   <- get_subsets(region_data, quo(n_studies < 10),  30) %>%
     mutate(category = ifelse(category == "low",
                              "mixed type",
                              "typical"),
            less_than_10_studies = "yes")
   
-  with_study <- get_subsets(region_data, quo(n_studies >= 10), 25) %>%
+  with_study <- get_subsets(region_data, quo(n_studies >= 10), 30) %>%
     mutate(category = ifelse(category == "low",
                              "mixed type",
                              "typical"),
@@ -822,7 +841,11 @@ for (reg in unique(clust_stud_pop$Region)) {
   
   # Combine
   combined <- bind_rows(no_study, with_study) %>% 
-    arrange(category, less_than_10_studies, main_type, main_type_percentage)
+    arrange(category, less_than_10_studies, main_type, main_type_percentage
+            )
+  
+  # combined_right <- combined
+  # combined_right$city_name[!combined_right$city_name %in% combined$city_name]
   
   # Add worksheet
   addWorksheet(wb, reg)

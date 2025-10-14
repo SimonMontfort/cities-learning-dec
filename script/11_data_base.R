@@ -22,6 +22,7 @@ setwd("/Users/simon/Documents/repo/cities-learning-dec")
 
 library(dplyr)
 library(arrow)
+library(stringi)
 
 ################################################################################
 # load data
@@ -150,7 +151,8 @@ wb$save("data/case_selection/case_selection_and_literature.xlsx")
 # example cities
 ################################################################################
 
-city_names_selected <- c("Makassar", "Cancún", "Shillong", "Mombasa", "Berlin", "Toronto", "Hong Kong", "Chongqing")
+city_names_selected <- c("Makassar", "Cartagena", "Shillong", "Mombasa", "Berlin", "Toronto", "Hong Kong", "Chongqing")
+# city_names_selected <- c("Cartagena")
 
 ids_examples <- case_studies_clean %>% 
   mutate(names_split = stri_split_fixed(city_names, ", ")) %>% 

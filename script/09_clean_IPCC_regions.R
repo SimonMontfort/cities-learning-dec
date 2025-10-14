@@ -50,6 +50,40 @@ ipcc_cont <- st_as_sf(ipcc_cont)
 ipcc_cont <- ipcc_cont %>% 
   mutate(Region = ifelse(Region == "Central and South America", "South America", Region))
 
+ipcc_cont_split <- ipcc_cont %>%
+  filter(Region == "Small Islands") %>%
+  st_cast("POLYGON") %>%
+  rowwise() %>%
+  mutate(max_lat = max(st_coordinates(geometry)[,1])) %>%  # latitude is Y
+  ungroup() %>%
+  arrange(desc(max_lat)) %>%  # highest latitude first
+  mutate(poly_id = row_number()) %>%
+  dplyr::select(-max_lat)  # remove helper column if not needed
+
+tm_shape(ipcc_cont_split) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(1:10))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(11))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(12))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(13))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(14))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(15))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(17))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(18))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(19:21))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(22:26))) + tm_polygons()
+tm_shape(ipcc_cont_split %>% filter(poly_id %in% c(27))) + tm_polygons()
+
+ipcc_cont_split <- ipcc_cont_split %>%
+  mutate(Region = ifelse(poly_id == 12, "Africa", Region), # Madagascar
+         Region = ifelse(poly_id == 13, "South America", Region), # Falkland
+         Region = ifelse(poly_id == 15, "North America", Region), # Falkland
+  )
+
+ipcc_cont <- ipcc_cont_split %>%
+  bind_rows(ipcc_cont %>% filter(Region != "Small Islands")) %>% 
+  group_by(Region) %>% 
+  summarise(geometry = st_union(geometry))
+
 st_write(ipcc_cont, "data/IPCC-WGII-continental-regions_shapefile/IPCC-WGII-continental-regions_shapefile_clean.shp", delete_dsn = TRUE)
 
 ##########################
@@ -200,38 +234,41 @@ final$Region_final[final$ID_UC_G0 == 7356] <- "Africa" # Hurghada, Egypt
 
 any(is.na(final$Region_final))
 
-# 
-# final <- final %>% 
-#   as.data.frame() %>% 
-#   dplyr::select(ID_UC_G0, Region = Region_final)
-# 
-# ### checks
-# final_test <- ghsl %>% 
-#   left_join(final %>% as.data.frame())
-# 
-# for (region in unique(final_test$Region)) {
-#   countries_per_region <- final_test %>% 
-#     filter(Region == region) %>% 
-#     pull(GC_CNT_GAD_2025) %>% 
-#     unique() %>% sort()
-#   print(
-#     paste(region)
-#   )
-#   print(
-#     countries_per_region
-#   )
-# }
-# 
-# # final_test %>% filter(GC_CNT_GAD_2025 == "Northern Cyprus") %>% pull(Region)
-# final_test %>% group_by(Region) %>% summarise()
-# 
-# # validate
-# check_1 <- final %>% 
-#   filter(ID_UC_G0 %in% unmatched$ID_UC_G0) %>% 
-#   left_join(ghsl %>% dplyr::select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025)) %>% 
-#   dplyr::select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025, Region) 
-# 
-# check_1 %>% as.data.frame()
+################################################################################
+# checks and final export
+################################################################################
+
+final <- final %>%
+  as.data.frame() %>%
+  dplyr::select(ID_UC_G0, Region = Region_final)
+
+### checks
+final_test <- ghsl %>%
+  left_join(final %>% as.data.frame())
+
+for (region in unique(final_test$Region)) {
+  countries_per_region <- final_test %>%
+    filter(Region == region) %>%
+    pull(GC_CNT_GAD_2025) %>%
+    unique() %>% sort()
+  print(
+    paste(region)
+  )
+  print(
+    countries_per_region
+  )
+}
+
+# final_test %>% filter(GC_CNT_GAD_2025 == "Northern Cyprus") %>% pull(Region)
+final_test %>% group_by(Region) %>% summarise()
+
+# validate
+check_1 <- final %>%
+  filter(ID_UC_G0 %in% unmatched$ID_UC_G0) %>%
+  left_join(ghsl %>% dplyr::select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025)) %>%
+  dplyr::select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025, Region)
+
+check_1 %>% as.data.frame()
 
 
 write.csv(final, "data/IPCC-WGII-continental-regions_shapefile/cities_ids_with_ipcc_regions.csv")
