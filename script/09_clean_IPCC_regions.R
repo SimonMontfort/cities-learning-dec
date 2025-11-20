@@ -270,6 +270,7 @@ check_1 <- final %>%
 
 check_1 %>% as.data.frame()
 
+final %>% group_by(Region) %>% count()
 
 write.csv(final, "data/IPCC-WGII-continental-regions_shapefile/cities_ids_with_ipcc_regions.csv")
 

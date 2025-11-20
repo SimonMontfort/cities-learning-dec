@@ -23,6 +23,7 @@ setwd("/Users/simon/Documents/repo/cities-learning-dec")
 library(dplyr)
 library(arrow)
 library(stringi)
+library(openxlsx2)
 
 ################################################################################
 # load data
@@ -35,10 +36,10 @@ file_names <- list.files(
   full.names = TRUE
 )
 df_list <- lapply(file_names, read.csv)
-oa <- do.call(rbind, df_list)
+oa <- do.call(rbind, df_list) %>% as_tibble()
 
 # studies per city
-clean_places <- read.csv("data/geoparser/clean_places_augmented.csv")
+clean_places <- read.csv("data/geoparser/clean_places_augmented.csv") %>% as_tibble()
 clust_stud_pop <- read.csv("data/clustering_results/cities_by_regional_type_clean.csv")
 
 ################################################################################
@@ -46,16 +47,16 @@ clust_stud_pop <- read.csv("data/clustering_results/cities_by_regional_type_clea
 ################################################################################
 
 clean_places <- clean_places %>% 
-  filter(!is.na(city_intersection_id) & !is.na(city_word_match_id)) %>%
+  filter((city_word_match_yes | city_intersects_yes) %in% TRUE) %>%
   mutate(city_id = ifelse(is.na(city_intersection_id), city_word_match_id, city_intersection_id)) %>% 
-  select(id, city_id)
+  select(id, city_id) %>% 
+  distinct() 
 
 clean_places <- clean_places %>% 
-  left_join(clust_stud_pop) %>% 
+  left_join(clust_stud_pop, by = "city_id") %>% 
   select(id, city_id, cluster_name, city_name, country, Region)
 
 clean_places_type_region <- clean_places %>% 
-  group_by(id) %>% 
   mutate(value = "present") %>%
   pivot_wider(
     names_from = cluster_name,
@@ -70,6 +71,7 @@ clean_places_type_region <- clean_places %>%
     values_fill = list(value = "absent"),
     names_prefix = "Region: "
   ) %>%
+  group_by(id) %>%
   summarise(across(starts_with("Type:") | starts_with("Region:"), ~ ifelse(any(. == "present"), "present", "absent")))
 
 clean_places_cities_countries <- clean_places %>%
@@ -77,40 +79,39 @@ clean_places_cities_countries <- clean_places %>%
   summarise_at(vars(city_name, city_id, country), .funs = function(x){paste(x, collapse = ", ")}) %>% 
   rename(city_names = city_name, city_ids = city_id, countries = country)
 
-clean_places <- left_join(clean_places_cities_countries, clean_places_type_region)
+clean_places <- left_join(clean_places_cities_countries, clean_places_type_region, by = "id")
 
 case_studies <- oa %>%
   left_join(clean_places, by = "id") %>%
-  filter(!is.na(city_ids)) %>%
-  as_tibble()
+  filter(!is.na(city_ids)) 
 
 ################################################################################
 # download specs (e.g. citations)
 ################################################################################
 
-# library(OpenAlexR)
+# library(openalexR)
 # article_specs <- oa_fetch(
 #   entity = "works",
 #   id = case_studies$id,
 #   to_publication_date = "2025-03-24",
 #   count_only = FALSE,
-#   verbose = FALSE,
+#   verbose = TRUE,
 #   options = list(select = c(
 #     "id", "publication_date", "type", "locations",
-#     "authorships", "open_access", 
+#     "authorships", "open_access",
 #     "concepts", "cited_by_count", "referenced_works", "language"
 #   ))
 # )
 # saveRDS(article_specs, "data/OpenAlex/meta.Rds")
 article_specs <- readRDS("data/OpenAlex/meta.Rds")
-
-# extract authros
-authors <- article_specs %>% 
-  rename(article_id = id) %>% 
-  group_by(article_id) %>% 
-  select(authorships) %>% 
-  unnest(authorships) %>% 
-  summarise(authors = paste0(display_name, collapse = ", "))
+# 
+# # extract authors
+# authors <- article_specs %>% 
+#   rename(article_id = id) %>% 
+#   group_by(article_id) %>% 
+#   select(authorships) %>% 
+#   unnest(authorships) %>% 
+#   summarise(authors = paste0(display_name, collapse = ", "))
 
 
 ################################################################################
@@ -119,8 +120,11 @@ authors <- article_specs %>%
 
 case_studies_clean <- case_studies %>% 
   # left_join(authors, by = c("id" = "article_id")) %>% 
-  left_join(article_specs %>% select(-authorships, -any_repository_has_fulltext, 
-                                     -is_oa_anywhere, -referenced_works, -concepts), 
+  left_join(article_specs %>% 
+              group_by(id) %>% 
+              distinct() %>% 
+              select(-authorships, -any_repository_has_fulltext, 
+                     -is_oa_anywhere, -referenced_works, -concepts), 
             by = "id") %>% 
   select(OpenAlex_article_id = id, publication_year, publication_date, authors, title, abstract = text, cited_by_count,
          type, oa_status, oa_url, language,
@@ -151,17 +155,13 @@ wb$save("data/case_selection/case_selection_and_literature.xlsx")
 # example cities
 ################################################################################
 
-city_names_selected <- c("Makassar", "Cartagena", "Shillong", "Mombasa", "Berlin", "Toronto", "Hong Kong", "Chongqing")
-# city_names_selected <- c("Cartagena")
+city_names_selected <- c("Makassar", "Cancún", "Basra", "Santiago de Cuba", "Cartagena", "Mombasa", "Berlin", "Melbourne", "Louisville", "Chongqing")
 
 ids_examples <- case_studies_clean %>% 
   mutate(names_split = stri_split_fixed(city_names, ", ")) %>% 
-  # unnest(names_split) %>% 
-  select(OpenAlex_article_id, city_names
-         # publication_year, publication_date, authors, title, abstract, cited_by_count, names_split, city_names, 
-         # names_split
-         ) %>%
-  dplyr::filter(city_names %in% city_names_selected) %>% 
+  select(OpenAlex_article_id, city_names) %>%
+  dplyr::filter(city_names %in% city_names_selected) %>% # single case studies
+  # filter(grepl(paste(city_names_selected, collapse = "|"), city_names)) %>% # comparative and single case studies
   pull(OpenAlex_article_id)
 
 case_studies_examples <- case_studies_clean %>% 
@@ -170,3 +170,11 @@ case_studies_examples <- case_studies_clean %>%
 
 write_xlsx(case_studies_examples, file = "data/case_selection/case_studies_examples.xlsx")
 
+case_studies_examples_old <- read_xlsx("data/case_selection/case_studies_examples_old.xlsx")
+
+case_studies_examples_additional <- case_studies_examples %>% 
+  filter(!OpenAlex_article_id %in% case_studies_examples_old$OpenAlex_article_id) 
+
+table(case_studies_examples_additional$city_names)
+
+write_xlsx(case_studies_examples_additional, file = "data/case_selection/case_studies_examples_additional.xlsx")

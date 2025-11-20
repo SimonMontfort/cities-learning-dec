@@ -133,10 +133,11 @@ ghsl <- ghsl %>%
 ##########################
 
 clean_places <- clean_places %>% 
-  filter(!is.na(city_intersection_id) & !is.na(city_word_match_id)) %>%
+  filter((city_word_match_yes | city_intersects_yes) %in% TRUE) %>%
   filter(id %in% oa$id) %>% # only deduplicated count
   mutate(city_id = ifelse(is.na(city_intersection_id), city_word_match_id, city_intersection_id)) %>% 
-  select(id, city_id)
+  select(id, city_id) %>% 
+  distinct() 
 
 n_studies_per_city <- clean_places %>% 
   group_by(city_id) %>% 
@@ -827,13 +828,13 @@ for (reg in unique(clust_stud_pop$Region)) {
   # region_data <- region_data %>% filter(!city_name %in% wrong_cities)
   
   # Get subsets
-  no_study   <- get_subsets(region_data, quo(n_studies < 10),  30) %>%
+  no_study   <- get_subsets(region_data, quo(n_studies < 10),  25) %>%
     mutate(category = ifelse(category == "low",
                              "mixed type",
                              "typical"),
            less_than_10_studies = "yes")
   
-  with_study <- get_subsets(region_data, quo(n_studies >= 10), 30) %>%
+  with_study <- get_subsets(region_data, quo(n_studies >= 10), 25) %>%
     mutate(category = ifelse(category == "low",
                              "mixed type",
                              "typical"),
