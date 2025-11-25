@@ -180,7 +180,7 @@ def summarize_clustering_results(results, ghs_ids, n_clusters, use_soft=False, s
         # Load and align soft assignments from all runs
         final_labels, aligned_stack, std_probs, entropies = load_and_align_soft_probs(n_clusters, n_runs, soft_dir)
 
-        # You need silhouettes to weight runs
+        # silhouettes to weight runs
         _, silhouettes = get_preds_and_silhouettes(results, n_clusters, 'dec')
 
         # Compute weights from silhouettes

@@ -365,6 +365,236 @@ print(xtable(summ_stats,
       tabular.environment = "longtable",
       floating = FALSE)
 
+################################################################################
+# summary statistics: regional deviations
+################################################################################
+
+t <- clust %>%
+  left_join(cluster_names, by = "consensus_label_majority")
+
+median(t$GHS_GDP_PPP[t$Region == "Africa"])
+median(t$GHS_GDP_PPP[t$cluster_name == "Type 2" & t$Region == "Africa"])
+clust %>% 
+  filter(cluster_name )
+
+winsorize <- function(x, p = c(0.01, 0.99)) {
+  quant <- quantile(x, p, na.rm = TRUE)
+  x[x < quant[1]] <- quant[1]
+  x[x > quant[2]] <- quant[2]
+  x
+}
+
+
+# # 1. Global z-normalization once
+clust_z <- clust %>%
+  mutate(across(all_of(co_vars), ~ min_max_scale(winsorize(.x))))
+
+# clust_z <- clust
+
+# 2. Regional medians (on globally standardized data)
+reg_medians <- clust_z %>%
+  left_join(cluster_names, by = "consensus_label_majority") %>%
+  group_by(Region) %>%
+  summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
+  pivot_longer(cols = all_of(co_vars), values_to = "reg_medians")
+
+# 3. Region × type medians (on the SAME globally standardized data)
+reg_type_medians <- clust_z %>%
+  left_join(cluster_names, by = "consensus_label_majority") %>%
+  group_by(Region, cluster_name) %>%
+  summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
+  pivot_longer(cols = all_of(co_vars), values_to = "reg_type_medians")
+
+reg_type_medians %>%
+  left_join(reg_medians, by = c("Region", "name")) %>% 
+  filter(cluster_name == "Type 2", Region == "Africa") %>% 
+  mutate(
+    diff = reg_type_medians - reg_medians,
+    abs_diff = abs(diff)
+  ) %>% 
+  slice_max(abs_diff, n = 3) 
+
+# 4. Join + difference
+df <- reg_type_medians %>%
+  left_join(reg_medians, by = c("Region", "name")) %>%
+  mutate(
+    diff = reg_type_medians - reg_medians,
+    abs_diff = abs(diff)
+  )
+
+# 5. Plot top 3
+fig2x <- df %>% 
+  rename_co_vars("name") %>%
+  mutate(name_combined = paste(Region, cluster_name, name, sep = "___")) %>% 
+  filter(!is.na(diff)) %>% 
+  group_by(Region, cluster_name) %>% 
+  slice_max(abs_diff, n = 3) %>% 
+  mutate(name_combined = forcats::fct_reorder(name_combined, diff)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = diff, y = name_combined)) +
+  geom_point(aes(x = diff, col = cluster_name),
+             size = 2, alpha = 1, shape = 17) +
+  geom_vline(xintercept = 0, lty = 3, col = "grey") + 
+  geom_text(aes(hjust = ifelse(diff > 0, 1, 0),
+                x = ifelse(diff > 0, -.05, .05),
+                label = sapply(name_combined, function(x) sub(" ", "\n", sub(".*___", "", x)))),
+            lineheight= .8, size = 2.7) +
+  # scale_y_discrete(labels = function(x) sub(".*___GDP PPP growth", "💰", x)) +
+  # scale_y_discrete(labels = function(x) sub(".*___", "", x)) +
+  facet_grid2(
+    rows = vars(Region),
+    cols = vars(cluster_name),
+    scales = "free_y",
+    independent = "y"
+  ) +
+  scale_color_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  # scale_y_discrete(labels = c(
+  #   # "GDP PPP" = "💰"
+  #   # "Population" = "👥",
+  #   # "Greenness" = "🌿",
+  #   # "Infra" = "🏗️"
+  # )) + 
+  labs(
+    x = "",
+    y = ""
+    # title = "Regional Median vs. Cluster-Type Median",
+  ) +
+  theme_SM() +
+  theme(
+    # axis.text.y = element_markdown(
+    #   family = "Apple Color Emoji",   # macOS emoji font
+    #   size = 12
+    # )
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank()
+  ) +
+  theme(legend.position = "bottom")
+
+fig2x
+ggsave(fig2x, file = "plots/fig2x.pdf", height = 8, width = 10)
+
+
+
+
+
+winsorize <- function(x, p = c(0.01, 0.99)) {
+  q <- quantile(x, p, na.rm = TRUE)
+  x[x < q[1]] <- q[1]
+  x[x > q[2]] <- q[2]
+  x
+}
+
+min_max_scale <- function(x) {
+  (x - min(x, na.rm = TRUE)) / 
+    (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+}
+
+# GLOBAL winsorized + minmax-scaled dataset
+clust_scaled <- clust %>%
+  mutate(across(all_of(co_vars),
+                ~ min_max_scale(winsorize(.x)),
+                .names = "{.col}"))
+
+reg_medians_scaled <- clust_scaled %>%
+  left_join(cluster_names, by = "consensus_label_majority") %>%
+  group_by(Region) %>%
+  summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
+  pivot_longer(all_of(co_vars),
+               names_to = "indicator",
+               values_to = "reg_scaled")
+
+reg_type_medians_scaled <- clust_scaled %>%
+  left_join(cluster_names, by = "consensus_label_majority") %>%
+  group_by(Region, cluster_name) %>%
+  summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
+  pivot_longer(all_of(co_vars),
+               names_to = "indicator",
+               values_to = "type_scaled")
+
+ranking <- reg_type_medians_scaled %>%
+  left_join(reg_medians_scaled, by = c("Region", "indicator")) %>%
+  mutate(
+    diff_scaled = type_scaled - reg_scaled,
+    abs_diff_scaled = abs(diff_scaled)
+  ) %>%
+  group_by(Region, cluster_name) %>%
+  slice_max(abs_diff_scaled, n = 3, with_ties = FALSE)
+
+# raw region medians
+reg_medians_raw <- clust %>%
+  left_join(cluster_names, by = "consensus_label_majority") %>%
+  group_by(Region) %>%
+  summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
+  pivot_longer(all_of(co_vars),
+               names_to = "indicator",
+               values_to = "reg_raw")
+
+# raw type medians
+reg_type_medians_raw <- clust %>%
+  left_join(cluster_names, by = "consensus_label_majority") %>%
+  group_by(Region, cluster_name) %>%
+  summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
+  pivot_longer(all_of(co_vars),
+               names_to = "indicator",
+               values_to = "type_raw")
+
+interp <- ranking %>%
+  left_join(reg_medians_raw,  by = c("Region", "indicator")) %>%
+  left_join(reg_type_medians_raw, by = c("Region", "cluster_name", "indicator")) %>%
+  mutate(
+    raw_ratio = type_raw / reg_raw,
+    raw_diff = type_raw - reg_raw,
+    interpretable_label = case_when(
+      raw_ratio >= 1 ~ paste0(round(raw_ratio, 1), "× higher"),
+      raw_ratio <  1 ~ paste0(round(1/raw_ratio, 1), "× lower")
+    )
+  ) %>% 
+  rename_co_vars("indicator") 
+
+ggplot(interp, aes(x = reg_raw, xend = type_raw, y = indicator)) +
+  geom_segment(color = "grey60") +
+  geom_point(aes(x = reg_raw), color = "black", size = 2) +
+  geom_point(aes(x = type_raw, color = cluster_name), size = 2) +
+  facet_grid2(rows = vars(Region),
+              cols = vars(cluster_name),
+              scales = "free_y",
+              independent = "y") +
+  labs(
+    x = "Raw Value (Median)",
+    y = "Indicator",
+    title = "Interpretable Differences: Raw Medians",
+    subtitle = "Indicators selected based on scaled differences"
+  ) +
+  theme_SM()
+
+ggplot(interp, aes(x = raw_ratio, y = indicator, fill = cluster_name)) +
+  geom_col() +
+  geom_vline(xintercept = 1, lty = 2) +
+  facet_grid2(rows = vars(Region), cols = vars(cluster_name),
+              scales = "free_y",
+              independent = "y") +
+  geom_text(aes(hjust = ifelse(raw_ratio > 1, 1, 0),
+                x = ifelse(raw_ratio > 1, .95, 1.05),
+                label = sapply(indicator, function(x) sub(" ", "\n", sub(".*___", "", x)))),
+            lineheight= .8, size = 2.7) +
+  scale_x_continuous(transform = "log2") +
+  labs(
+    x = "Type Median / Regional Median",
+    y = "Indicator",
+    title = "Multiplicative Differences (Interpretation-Friendly)"
+  ) +
+  theme_SM() +
+  theme(
+    # axis.text.y = element_markdown(
+    #   family = "Apple Color Emoji",   # macOS emoji font
+    #   size = 12
+    # )
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank()
+  ) 
+
+
+
 # ################################################################################
 # # summary statistics: correlations
 # ################################################################################
@@ -519,6 +749,26 @@ ggsave(p_emissions_box, file = "plots/p_emissions_box.pdf", width = 10, height =
 #   slice(1:10) %>% 
 #   as.data.frame()
 
+ghsl_clean %>% 
+  left_join(ghsl %>% dplyr::select(ID_UC_G0, CL_B12_CUR_2010), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  left_join(clust %>% dplyr::select(GHS_urban_area_id, consensus_label_majority), by = "GHS_urban_area_id" ) %>% 
+  left_join(gender, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  left_join(hdi, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  left_join(emmissions_box_dat %>% dplyr::select(ID_UC_G0, odiac_norm), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  dplyr::select(GHS_urban_area_id, consensus_label_majority, co_vars, 
+                GHS_female_gender_index, GHS_HDI, odiac_norm) %>% 
+  pivot_longer(-c(GHS_urban_area_id, consensus_label_majority), names_to = "variable") %>% 
+  mutate(clustering = ifelse(variable %in% co_vars, "Clustering", "Outcomes")) %>% 
+  rename_co_vars("variable") %>% 
+  mutate(variable = ifelse(variable == "GHS_female_gender_index", "Female gender index", variable),
+         variable = ifelse(variable == "GHS_HDI", "Human Development index", variable),
+         variable = ifelse(variable == "odiac_norm", "CO2 emissions p.c.", variable),
+         variable = factor(variable, levels = c(co_vars_formatted, "Female gender index", 
+                                                "Human Development index", "CO2 emissions p.c."))) %>% 
+  left_join(cluster_names, by = c("consensus_label_majority" = "consensus_label_majority")) %>% 
+  group_by(variable) %>% 
+  summarise()
+
 ###########
 # all data
 ###########
@@ -544,10 +794,11 @@ box_plot_add_covs_dat <- ghsl_clean %>%
   mutate(
     # adjusted_value = ifelse(value == 0, 1e-4 *  mean(abs(value), na.rm = TRUE), value),
     # normalized_value = sign(adjusted_value) * log2(abs(adjusted_value) / mean(abs(value), na.rm = TRUE))
+    scaled_value = scale(value),
     normalized_value = value / mean(value, na.rm = TRUE)) %>%
   ungroup() 
 
-
+box_plot_add_covs_dat
 
 
 ###########
@@ -567,6 +818,8 @@ to_label <- desc_geo %>%
   group_by(cluster_name, Region) %>% 
   arrange(-mean_prob) %>% 
   slice_max(mean_prob, n = 3)
+
+write.csv(to_label %>% as.data.frame() %>% select(ID_UC_G0, cluster_name, Region, GC_UCN_MAI_2025, GC_CNT_GAD_2025, mean_prob, n_studies), "data/case_selection/three_representative_cities_per_regions.csv")
 
 to_label %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025, Region, cluster_name)
 
@@ -806,6 +1059,7 @@ ggsave(p_mean_prob_cont, file = "plots/p_mean_prob_cont.pdf", width = 10, height
 ##################################################################
 
 plot_covariate_boxplot <- function(box_plot_add_covs_dat, clust_probs, selected_cluster, highlight_id = NULL, city_name, limits = NULL) {
+  
   # Filter data for the selected cluster
   cluster_data <- box_plot_add_covs_dat %>%
     filter(cluster_name == selected_cluster) 
@@ -985,10 +1239,23 @@ city_ids <- city_ids[match(city_names, city_ids$GC_UCN_MAI_2025), ] %>% pull(ID_
 plot_multiple_cities(
   # city_names = city_names,
   ghsl = ghsl,
-  city_ids = city_ids,
+  city_ids = city_ids[1:5],
   clust_probs = clust_probs,
   covariate_data = box_plot_add_covs_dat,
   output_dir = "plots/figA3.pdf",
+  limits = c(-5,7)
+  # height = 12
+)
+
+# Run batch plotting
+plot_multiple_cities(
+  # city_names = city_names,
+  ghsl = ghsl,
+  city_ids = city_ids[6:10],
+  clust_probs = clust_probs,
+  covariate_data = box_plot_add_covs_dat,
+  output_dir = "plots/figA4.pdf",
+  limits = c(-5,7)
   # height = 12
 )
 

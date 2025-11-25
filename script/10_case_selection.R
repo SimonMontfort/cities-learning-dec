@@ -291,7 +291,7 @@ plot_cluster_region_heatmap <- function(data, value_col, fill_label = NULL, titl
   # Plot
   ggplot(heatmap_data_totals, aes(x = cluster_name, y = Region, fill = sqrt(fill_value))) +
     geom_tile(color = "white", width = .95, height = .95) +
-    geom_text(aes(label = label), color = "black", size = 3) +
+    geom_text(aes(label = label), color = "black", size = 3.5) +
     scale_fill_gradient(
       low = low, high = high,
       name = fill_label %||% if (percent) "% of Total" else rlang::as_label(value_col_sym)
@@ -510,100 +510,99 @@ p_studies_per_cluster_region <- plot_cluster_region_heatmap(
 # get cities
 sampled_cities <- sample_cities_by_share(clust_stud_pop, 500, "pop")
 
-
-# cities covered
-p_population_selected_covered_cities_per_cluster_region <- plot_cluster_region_heatmap(
-  sampled_cities %>% mutate(city_yes = 1), 
-  city_yes, 
-  title = "Selected cities",
-  low = "#deebf7",
-  high = "#08519c")
-# studies covered
-p_population_selected_covered_studies_per_cluster_region <- plot_cluster_region_heatmap(
-  sampled_cities, 
-  n_studies, 
-  title = "Selected studies",
-  low = "#deebf7",
-  high = "#08519c")
+# # cities covered
+# p_population_selected_covered_cities_per_cluster_region <- plot_cluster_region_heatmap(
+#   sampled_cities %>% mutate(city_yes = 1), 
+#   city_yes, 
+#   title = "Selected cities",
+#   low = "#deebf7",
+#   high = "#08519c")
+# # studies covered
+# p_population_selected_covered_studies_per_cluster_region <- plot_cluster_region_heatmap(
+#   sampled_cities, 
+#   n_studies, 
+#   title = "Selected studies",
+#   low = "#deebf7",
+#   high = "#08519c")
 
 p_selection <- ggarrange(
   p_pop_share_per_cluster_region, p_pop_per_cluster_region, 
   p_cities_per_cluster_region, p_studies_per_cluster_region, 
-  p_population_selected_covered_cities_per_cluster_region,
-  p_population_selected_covered_studies_per_cluster_region,
-  nrow = 3,
+  # p_population_selected_covered_cities_per_cluster_region,
+  # p_population_selected_covered_studies_per_cluster_region,
+  nrow = 2,
   ncol = 2,
   labels = "auto")
-ggsave(p_selection, file = "plots/p_selection.pdf", width = 10, height = 10)
+ggsave(p_selection, file = "plots/figA5.pdf", width = 10, height = 10)
 
-# analyse biases
-p_bias <- plot_sample_vs_full_pop_share(sampled_cities, clust_stud_pop, title = "Before iterative population-based adjustment")
-ggsave(p_bias, file = "plots/p_selection_bias.pdf", width = 10, height = 4)
-
-p_selection_map <- ghsl %>%
-  select(city_id) %>%
-  left_join(clust_stud_pop) %>%
-  left_join(sampled_cities %>% mutate(sampled_yes = "In the sample") %>% select(city_id, sampled_yes)) %>%
-  mutate(sampled_yes = ifelse(is.na(sampled_yes), "Not in the sample", sampled_yes)) %>%
-  mutate(sampled_yes = factor(
-    sampled_yes,
-    levels = c("Not in the sample", "In the sample")
-  )) %>% 
-  ggplot() +
-  geom_sf(data = world %>% st_union(), col = "white") +
-  geom_sf(aes(geometry = geom,
-              col = sampled_yes, fill = sampled_yes, alpha = sampled_yes), 
-          lwd = 0, 
-          size = .5
-  ) +
-  scale_alpha_manual(values = c(0.4, 1)) +
-  ggrepel::geom_label_repel(
-    data = ~ subset(., sampled_yes == "In the sample") %>% 
-      group_by(consensus_label_majority, Region) %>% 
-      arrange(probability, .by_group = T) %>% 
-      slice(1:5),
-    aes(label = city_name, geometry = geom),
-    stat = "sf_coordinates",
-    alpha = 0.5, size = 2, max.overlaps = 300
-  ) +
-  scale_color_manual(values = c( "#ffe0a3", "black")) +
-  labs(col = "Case selection", fill = "Case selection", alpha = "Case selection") +
-  # scale_color_gradient2(low="white", mid="#ffe0a3", high="#963d03",
-  #                       limits = c(0, 1), oob = scales::squish) +
-  scale_size_continuous(range = c(.05, 1)) +
-  facet_wrap(~cluster_name) +
-  geom_sf(data = bb, col = "grey40", fill = "transparent", linewidth = 1) +
-  theme_SM() + labs(y = "", x = "") +
-  theme(legend.position = c(.57,.44),
-        legend.title = element_text(),
-        axis.text.x = element_blank(),
-        axis.ticks.length = unit(0, "cm"),
-        axis.text.y = element_blank(),
-        text = element_text(size = 8),
-        panel.spacing = unit(-0.15, "lines"),
-        panel.border = element_blank(),
-        plot.margin = margin(c(-1,0,0,0), "cm")
-  )
-ggsave(p_selection_map, file = "plots/p_selection_map.pdf", width = 10, height = 5.8)
-
-# Panel A: Distribution of n_studies across world regions
-p_a <- ggplot(sampled_cities, aes(x = Region, y = n_studies)) +
-  geom_boxplot(fill = "#3182bd", alpha = 0.7, outliers = FALSE) +
-  labs(title = "Distribution of Studies by Region",
-       x = "", y = "Number of Studies") +
-  theme_SM() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-# Panel B: Distribution of n_studies across cluster_name (city types)
-p_b <- ggplot(sampled_cities, aes(x = cluster_name, y = n_studies)) +
-  geom_boxplot(fill = "#3182bd", alpha = 0.7, outliers = FALSE) +
-  labs(title = "Distribution of Studies by City Type",
-       x = "", y = "Number of Studies") +
-  theme_SM() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-p_selection_n_studies <- ggarrange(p_a, p_b, labels = "auto", align = "h", widths = c(7,4))
-ggsave(p_selection_n_studies, file = "plots/p_selection_n_studies.pdf", width = 10, height = 5)
+# # analyse biases
+# p_bias <- plot_sample_vs_full_pop_share(sampled_cities, clust_stud_pop, title = "Before iterative population-based adjustment")
+# ggsave(p_bias, file = "plots/p_selection_bias.pdf", width = 10, height = 4)
+# 
+# p_selection_map <- ghsl %>%
+#   select(city_id) %>%
+#   left_join(clust_stud_pop) %>%
+#   left_join(sampled_cities %>% mutate(sampled_yes = "In the sample") %>% select(city_id, sampled_yes)) %>%
+#   mutate(sampled_yes = ifelse(is.na(sampled_yes), "Not in the sample", sampled_yes)) %>%
+#   mutate(sampled_yes = factor(
+#     sampled_yes,
+#     levels = c("Not in the sample", "In the sample")
+#   )) %>% 
+#   ggplot() +
+#   geom_sf(data = world %>% st_union(), col = "white") +
+#   geom_sf(aes(geometry = geom,
+#               col = sampled_yes, fill = sampled_yes, alpha = sampled_yes), 
+#           lwd = 0, 
+#           size = .5
+#   ) +
+#   scale_alpha_manual(values = c(0.4, 1)) +
+#   ggrepel::geom_label_repel(
+#     data = ~ subset(., sampled_yes == "In the sample") %>% 
+#       group_by(consensus_label_majority, Region) %>% 
+#       arrange(probability, .by_group = T) %>% 
+#       slice(1:5),
+#     aes(label = city_name, geometry = geom),
+#     stat = "sf_coordinates",
+#     alpha = 0.5, size = 2, max.overlaps = 300
+#   ) +
+#   scale_color_manual(values = c( "#ffe0a3", "black")) +
+#   labs(col = "Case selection", fill = "Case selection", alpha = "Case selection") +
+#   # scale_color_gradient2(low="white", mid="#ffe0a3", high="#963d03",
+#   #                       limits = c(0, 1), oob = scales::squish) +
+#   scale_size_continuous(range = c(.05, 1)) +
+#   facet_wrap(~cluster_name) +
+#   geom_sf(data = bb, col = "grey40", fill = "transparent", linewidth = 1) +
+#   theme_SM() + labs(y = "", x = "") +
+#   theme(legend.position = c(.57,.44),
+#         legend.title = element_text(),
+#         axis.text.x = element_blank(),
+#         axis.ticks.length = unit(0, "cm"),
+#         axis.text.y = element_blank(),
+#         text = element_text(size = 8),
+#         panel.spacing = unit(-0.15, "lines"),
+#         panel.border = element_blank(),
+#         plot.margin = margin(c(-1,0,0,0), "cm")
+#   )
+# ggsave(p_selection_map, file = "plots/p_selection_map.pdf", width = 10, height = 5.8)
+# 
+# # Panel A: Distribution of n_studies across world regions
+# p_a <- ggplot(sampled_cities, aes(x = Region, y = n_studies)) +
+#   geom_boxplot(fill = "#3182bd", alpha = 0.7, outliers = FALSE) +
+#   labs(title = "Distribution of Studies by Region",
+#        x = "", y = "Number of Studies") +
+#   theme_SM() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# 
+# # Panel B: Distribution of n_studies across cluster_name (city types)
+# p_b <- ggplot(sampled_cities, aes(x = cluster_name, y = n_studies)) +
+#   geom_boxplot(fill = "#3182bd", alpha = 0.7, outliers = FALSE) +
+#   labs(title = "Distribution of Studies by City Type",
+#        x = "", y = "Number of Studies") +
+#   theme_SM() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# 
+# p_selection_n_studies <- ggarrange(p_a, p_b, labels = "auto", align = "h", widths = c(7,4))
+# ggsave(p_selection_n_studies, file = "plots/p_selection_n_studies.pdf", width = 10, height = 5)
 
 
 
@@ -689,46 +688,46 @@ wb$add_data(sheet = "Characteristics and types", x = clust_prob_clean)
 wb$save("data/case_selection/case_selection_and_literature.xlsx")
 
 
-################################################################################
-# for the paper, a lower number of cities are needed
-################################################################################
-
-# get cities
-sampled_cities <- sample_cities_by_share(clust_stud_pop, 70, "pop", min_studies_filter = 5)
-
-# cities covered
-p_population_selected_covered_cities_per_cluster_region <- plot_cluster_region_heatmap(
-  sampled_cities %>% mutate(city_yes = 1), 
-  city_yes, 
-  title = "Selected cities",
-  low = "#deebf7",
-  high = "#08519c")
-# studies covered
-p_population_selected_covered_studies_per_cluster_region <- plot_cluster_region_heatmap(
-  sampled_cities, 
-  n_studies, 
-  title = "Selected studies",
-  low = "#deebf7",
-  high = "#08519c")
-
-p_selection <- ggarrange(
-  p_pop_share_per_cluster_region, p_pop_per_cluster_region, 
-  p_cities_per_cluster_region, p_studies_per_cluster_region, 
-  p_population_selected_covered_cities_per_cluster_region,
-  p_population_selected_covered_studies_per_cluster_region,
-  nrow = 3,
-  ncol = 2,
-  labels = "auto")
-ggsave(p_selection, file = "plots/p_selection_paper.pdf", width = 10, height = 10)
-
-sampled_cities_clean <- sampled_cities %>%
-  left_join(clust_stud_pop) %>%
-  select(
-    city_id, city_name, country, region = Region,
-    city_type = cluster_name, number_of_studies = n_studies
-  ) %>% 
-  arrange(city_type, region, -number_of_studies)
-write.csv(sampled_cities_clean, "data/case_selection/selected_cites_paper.csv")
+# ################################################################################
+# # for the paper, a lower number of cities are needed
+# ################################################################################
+# 
+# # get cities
+# sampled_cities <- sample_cities_by_share(clust_stud_pop, 70, "pop", min_studies_filter = 5)
+# 
+# # cities covered
+# p_population_selected_covered_cities_per_cluster_region <- plot_cluster_region_heatmap(
+#   sampled_cities %>% mutate(city_yes = 1), 
+#   city_yes, 
+#   title = "Selected cities",
+#   low = "#deebf7",
+#   high = "#08519c")
+# # studies covered
+# p_population_selected_covered_studies_per_cluster_region <- plot_cluster_region_heatmap(
+#   sampled_cities, 
+#   n_studies, 
+#   title = "Selected studies",
+#   low = "#deebf7",
+#   high = "#08519c")
+# 
+# p_selection <- ggarrange(
+#   p_pop_share_per_cluster_region, p_pop_per_cluster_region, 
+#   p_cities_per_cluster_region, p_studies_per_cluster_region, 
+#   p_population_selected_covered_cities_per_cluster_region,
+#   p_population_selected_covered_studies_per_cluster_region,
+#   nrow = 3,
+#   ncol = 2,
+#   labels = "auto")
+# ggsave(p_selection, file = "plots/p_selection_paper.pdf", width = 10, height = 10)
+# 
+# sampled_cities_clean <- sampled_cities %>%
+#   left_join(clust_stud_pop) %>%
+#   select(
+#     city_id, city_name, country, region = Region,
+#     city_type = cluster_name, number_of_studies = n_studies
+#   ) %>% 
+#   arrange(city_type, region, -number_of_studies)
+# write.csv(sampled_cities_clean, "data/case_selection/selected_cites_paper.csv")
 
 
 ################################################################################
