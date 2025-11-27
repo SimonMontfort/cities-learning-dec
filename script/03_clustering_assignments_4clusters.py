@@ -180,17 +180,49 @@ def summarize_clustering_results(results, ghs_ids, n_clusters, use_soft=False, s
         # Load and align soft assignments from all runs
         final_labels, aligned_stack, std_probs, entropies = load_and_align_soft_probs(n_clusters, n_runs, soft_dir)
 
-        # silhouettes to weight runs
-        _, silhouettes = get_preds_and_silhouettes(results, n_clusters, 'dec')
+
+        '''
+        # 1. Remove explicitly excluded runs
+        excluded_runs = {3, 9, 10}
+        # excluded_runs = {3,9,10,27}
+
+        # Get predictions + silhouettes (for all runs)
+        all_preds, silhouettes = get_preds_and_silhouettes(results, n_clusters, 'dec')
+
+        # Build the index list of runs to keep
+        included_indices = [i for i in range(len(all_preds)) if i not in excluded_runs]
+
+        # Filter predictions and silhouettes
+        all_preds = [all_preds[i] for i in included_indices]
+        silhouettes = np.array([silhouettes[i] for i in included_indices])
+
+        # aligned_stack must be filtered in the SAME order
+        aligned_stack = aligned_stack[included_indices]     # shape → (n_kept_runs, n_samples, n_clusters)
+
+        # 2. Filter again based on percentile of silhouettes (quality filtering)
+        quality_mask = silhouettes > np.percentile(silhouettes, 27)
+
+        # Final high-quality runs
+        silhouettes = silhouettes[quality_mask]
+        aligned_high_quality = aligned_stack[quality_mask]
+
+        # 3. Compute consensus soft probabilities
+        mean_probs = aligned_high_quality.mean(axis=0)
+
+
+        '''
+        all_preds, silhouettes = get_preds_and_silhouettes(results, n_clusters, 'dec')
 
         # Compute weights from silhouettes
         weights = np.array(silhouettes)
         weights = (weights - weights.min()) / (weights.max() - weights.min() + 1e-8)
-        weights = 1 / (1 + np.exp(-12 * (weights - 0.4)))
+        weights = 1 / (1 + np.exp(-12 * (weights - 0.3)))
         weights /= weights.sum()
-
+        
         # Weighted average of soft probabilities
         mean_probs = np.tensordot(weights, aligned_stack, axes=([0], [0]))  # (n_samples, n_clusters)
+
+
         final_labels = mean_probs.argmax(axis=1)
 
         consensus_labels_maj = final_labels
@@ -253,7 +285,7 @@ def summarize_clustering_results(results, ghs_ids, n_clusters, use_soft=False, s
 if __name__ == "__main__":
     os.chdir("/Users/simon/Documents/repo/cities-learning-DEC")
 
-    n_runs = 30
+    n_runs = 40
     cities_clean_scaled_df = pd.read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_scaled.parquet")
     ghs_ids = cities_clean_scaled_df["GHS_urban_area_id"].values
     performance_scores = pd.read_csv("data/clustering_results/raw_clustering_scores.csv")

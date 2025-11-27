@@ -526,7 +526,7 @@ def flatten_performance_scores(results):
 
 if __name__ == '__main__':
     cluster_range = range(3,12)
-    n_runs = 30
+    n_runs = 40
 
     performance_scores = run_experiments(cluster_range, n_runs)
 

@@ -374,8 +374,8 @@ t <- clust %>%
 
 median(t$GHS_GDP_PPP[t$Region == "Africa"])
 median(t$GHS_GDP_PPP[t$cluster_name == "Type 2" & t$Region == "Africa"])
-clust %>% 
-  filter(cluster_name )
+# clust %>% 
+#   filter(cluster_name )
 
 winsorize <- function(x, p = c(0.01, 0.99)) {
   quant <- quantile(x, p, na.rm = TRUE)
@@ -383,6 +383,12 @@ winsorize <- function(x, p = c(0.01, 0.99)) {
   x[x > quant[2]] <- quant[2]
   x
 }
+
+min_max_scale <- function(x) {
+  (x - min(x, na.rm = TRUE)) / 
+    (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+}
+
 
 
 # # 1. Global z-normalization once
@@ -837,9 +843,7 @@ for (cluster in cluster_names$cluster_name) {
     ggplot() +
     geom_sf(data = world, fill = "grey90", color = "white") +  # World map with light gray color
     geom_sf(aes(geometry = centroid, 
-                col = mean_prob, fill = mean_prob, alpha = mean_prob, size = mean_prob), lwd = 0
-            # , size = .5
-            ) + 
+                col = mean_prob, fill = mean_prob, alpha = mean_prob, size = mean_prob), lwd = 0) + 
     ggrepel::geom_label_repel(
       data = to_label %>% 
         filter(cluster_name == cluster),
@@ -847,8 +851,6 @@ for (cluster in cluster_names$cluster_name) {
           geometry = centroid),
       stat = "sf_coordinates", alpha=.5, size = 3.5, 
     ) +
-    # scale_color_manual(values = c("#ffb84d", "black")) +
-    # scale_color_manual(values = c("#ffb84d", "black")) +
     scale_color_gradient2(low="white", mid="#ffe0a3", high="#963d03",
                                                   limits = c(0, 1), oob = scales::squish) +
     scale_alpha_continuous(range = c(0.05, 1)) +
@@ -949,6 +951,170 @@ ggsave(box_plot_list[[1]], filename = "plots/type_1.pdf", width = 5, height = 3.
 ggsave(box_plot_list[[2]], filename = "plots/type_2.pdf", width = 5, height = 3.8)
 ggsave(box_plot_list[[3]], filename = "plots/type_3.pdf", width = 5, height = 3.8)
 ggsave(box_plot_list[[4]], filename = "plots/type_4.pdf", width = 5, height = 3.8)
+
+#######----
+test_heat <- desc_geo %>% 
+  as.data.frame() %>% 
+  group_by(cluster_name, Region) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  mutate(share = n/sum(n)) %>% 
+  ggplot(aes(cluster_name, Region, fill = share)) +
+  geom_tile() + 
+  geom_text(aes(label = paste0(round(share*100, 2), "%")), col = "white") + 
+  theme_SM() + 
+  theme(legend.position = "bottom")
+test_heat
+ggsave(test_heat, file = "plots/test_heat.pdf")
+
+test_box_types <- desc_geo %>% 
+  as.data.frame() %>% 
+  pivot_longer(cols = co_vars) %>% 
+  mutate(name = factor(name, levels = co_vars)) %>% 
+  rename_co_vars("name") %>% 
+  ggplot(aes(Region, value, col = cluster_name)) + 
+  geom_boxplot(size = .2, outliers = F) + 
+  scale_y_continuous(trans = "log10") +
+  facet_wrap(~name, scales = "free_y", ncol = 3) +
+  scale_color_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  theme_SM()
+test_box_types
+ggsave(test_box_types, file = "plots/test_box_types.pdf", width = 10, height = 12)
+
+test_box_regions <- desc_geo %>% 
+  as.data.frame() %>% 
+  pivot_longer(cols = co_vars) %>% 
+  mutate(name = factor(name, levels = co_vars)) %>% 
+  rename_co_vars("name") %>% 
+  ggplot(aes(cluster_name, value, col = Region)) + 
+  geom_boxplot(size = .2, outliers = F) + 
+  scale_y_continuous(trans = "log10") +
+  facet_wrap(~name, scales = "free_y", ncol = 3) +
+  # scale_color_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  theme_SM()
+test_box_regions
+ggsave(test_box_regions, file = "plots/test_box_regions.pdf", width = 10, height = 12)
+
+test_assign_probs <- clust_probs %>% 
+  left_join(cites_ipcc_regions, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  ggplot(aes(cluster_name, mean_prob, col = cluster_name)) + 
+  geom_violin() +
+  geom_boxplot(size = .1, width = .1, outliers = F) + 
+  # scale_y_continuous(transform = "log10") +
+  facet_wrap(~Region) +
+  scale_color_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  theme_SM() + 
+  theme(legend.position = "bottom")
+test_assign_probs
+ggsave(test_assign_probs, file = "plots/test_assign_probs.pdf", width = 5, height = 5)
+
+# clust %>% 
+#   group_by(Region, cluster_name)
+
+test_region <- desc_geo %>% 
+  as.data.frame() %>% 
+  group_by(cluster_name, Region) %>% 
+  summarise(n = n()) %>% 
+  group_by(Region) %>% 
+  mutate(share = n/sum(n)) %>% 
+  ggplot(aes(Region, share, fill = cluster_name)) + 
+  geom_col(position = "stack", width = .4, col = "black", size = .2) +
+  geom_text(aes(label = paste0(round(share * 100, 2), "%")),
+            position = position_stacknudge(x = .22, vjust = 0.5), size = 3, hjust = 0) +
+  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  theme_SM() + 
+  theme(legend.position = "bottom")
+ggsave(test_region, file = "plots/test_region.pdf", width = 10, height = 5)
+
+
+
+
+desc_geo_exlc <- desc_geo %>%
+  as.data.frame() %>%
+  group_by(cluster_name) %>%
+  mutate(
+    cluster_name = case_when(
+      mean_prob < 0.8 * median(mean_prob) ~ "mixed",
+      TRUE ~ as.character(cluster_name)
+    ),
+    cluster_name = factor(
+      cluster_name,
+      levels = c(levels(desc_geo$cluster_name), "mixed")
+    )
+  ) 
+
+desc_geo_exlc %>%
+  # select(cluster_name, mean_prob) 
+  group_by(cluster_name, Region) %>% 
+  summarise(n = n()) %>% 
+  group_by(Region) %>% 
+  mutate(share = n/sum(n)) %>% 
+  ggplot(aes(Region, share, fill = cluster_name)) + 
+  geom_col(position = "stack", width = .4, col = "black", size = .2) +
+  geom_text(aes(label = paste0(round(share * 100, 2), "%")),
+            position = position_stacknudge(x = .22, vjust = 0.5), size = 3, hjust = 0) +
+  scale_fill_manual(values = rev(c( "grey", "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  theme_SM() + 
+  theme(legend.position = "bottom")
+
+
+
+desc_geo_exlc %>% 
+  ggplot() +
+  geom_sf(data = world, fill = "grey90", color = "white") +  # World map with light gray color
+  geom_sf(aes(geometry = centroid, 
+              col = mean_prob, fill = mean_prob, alpha = mean_prob, size = mean_prob), lwd = 0) + 
+  ggrepel::geom_label_repel(
+    # data = to_label %>% 
+    #   filter(cluster_name == cluster),
+    aes(label = GC_UCN_MAI_2025, 
+        geometry = centroid),
+    stat = "sf_coordinates", alpha=.5, size = 3.5, 
+  ) +
+  scale_color_gradient2(low="white", mid="#ffe0a3", high="#963d03",
+                        limits = c(0, 1), oob = scales::squish) +
+  scale_alpha_continuous(range = c(0.05, 1)) +
+  scale_size_continuous(range = c(.05, 1)) +
+  geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
+  coord_sf(crs = proj_robin) + 
+  # annotate(
+  #   "label",
+  #   x = -Inf, y = Inf,
+  #   label = cluster_names$cluster_name[cluster_names$cluster_name == cluster],
+  #   hjust = -0.1, vjust = 1.1,
+  #   size = 4,
+  #   fill = "white",
+  #   label.size = 0.3
+  # ) +
+  facet_wrap(~cluster_name) +
+  theme_SM() +
+  theme(
+    panel.border = element_rect(color = NA),
+    legend.position = "none",
+    plot.margin = margin(c(-1,-2,-1,-2), "cm")
+  ) +
+  labs(col = "Cities", x = "", y = "")
+
+desc_geo_exlc %>% 
+  filter(GC_UCN_MAI_2025 == "Mansa") %>% 
+  select(cluster_name, GC_UCN_MAI_2025, GC_CNT_GAD_2025, mean_prob)
+
+
+clust_probs %>% 
+  left_join(cites_ipcc_regions, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  ggplot(aes(cluster_name, mean_prob, col = cluster_name)) + 
+  geom_violin() +
+  geom_boxplot(size = .1, width = .1, outliers = F) + 
+  # scale_y_continuous(transform = "log10") +
+  # facet_wrap(~Region) +
+  scale_y_continuous(limits = c(.25, 1)) +
+  scale_color_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  theme_SM() + 
+  theme(legend.position = "bottom")
+
+#######----
+
+
 
 
 # Compute means by cluster and variable
