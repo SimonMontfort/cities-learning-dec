@@ -9,7 +9,8 @@ from sklearn.preprocessing import normalize
 from sklearn.metrics import pairwise_distances
 import joblib
 from sklearn.cluster import KMeans, AgglomerativeClustering
-
+import re
+import glob
 
 def align_clusters(reference, pred):
     """
@@ -34,60 +35,6 @@ def align_clusters(reference, pred):
         print(f"  Pred cluster {pred_cluster} ↔ Ref cluster {ref_cluster} | Jaccard overlap: {jaccard:.2f}%")
 
     return np.array([mapping[label] for label in pred])
-
-
-def align_soft_labels(reference_probs, target_probs):
-    """
-    Align cluster columns in target_probs to reference_probs using Hungarian algorithm.
-    Returns the aligned target_probs and the mapping.
-    """
-    n_clusters = reference_probs.shape[1]
-    cost_matrix = np.zeros((n_clusters, n_clusters))
-
-    for i in range(n_clusters):
-        for j in range(n_clusters):
-            cost_matrix[i, j] = np.linalg.norm(reference_probs[:, i] - target_probs[:, j])
-
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-    mapping = {j: i for i, j in zip(col_ind, row_ind)}
-    aligned_probs = target_probs[:, col_ind]
-
-    return aligned_probs, mapping
-
-
-def load_and_align_soft_probs(n_clusters, n_runs, soft_dir):
-    """
-    Loads and aligns soft assignments across runs for given cluster count.
-    Returns mean, std, and entropy of aligned soft probabilities.
-    """
-    soft_files = [
-        os.path.join(soft_dir, f"dec_soft_assignments_run{run}_clusters{n_clusters}.csv")
-        for run in range(n_runs)
-    ]
-
-    soft_probs_list = []
-    for f in soft_files:
-        df = pd.read_csv(f)
-        probs = df.filter(like="cluster_").values
-        soft_probs_list.append(probs)
-
-    ref_probs = soft_probs_list[0]
-    aligned = [ref_probs]
-
-    for probs in soft_probs_list[1:]:
-        aligned_probs, _ = align_soft_labels(ref_probs, probs)
-        aligned.append(aligned_probs)
-
-    aligned_stack = np.stack(aligned)  # (n_runs, n_samples, n_clusters)
-    print("aligned_stack.shape:", aligned_stack.shape)
-    mean_probs = aligned_stack.mean(axis=0)
-    std_probs = aligned_stack.std(axis=0)
-    entropies = -np.sum(mean_probs * np.log(mean_probs + 1e-10), axis=1)
-    final_labels = mean_probs.argmax(axis=1)
-
-    return final_labels, aligned_stack, std_probs, entropies
-
-
 
 def parse_labels(label_str):
     """Convert comma-separated label string to numpy array of ints."""
@@ -129,141 +76,108 @@ def compute_representative_scores(features_df, assigned_clusters, n_clusters, gh
     return pd.DataFrame(rep_scores)
 
 
-def compute_assignment_eac(all_labels_for_k, n_clusters=6):
-    n_runs = len(all_labels_for_k)
-    n_samples = len(all_labels_for_k[0])
+def detect_small_clusters(pattern="data/clustering_results/dec_soft_assignments_run*_cluster_4.csv", threshold=10):
 
-    coassoc = np.zeros((n_samples, n_samples))
-    for labels in all_labels_for_k:
-        for c in np.unique(labels):
-            idx = np.where(labels == c)[0]
-            coassoc[np.ix_(idx, idx)] += 1
+    problem_runs = {}
+    files = glob.glob(pattern)
 
-    coassoc /= n_runs
+    for f in files:
+        # Extract run index
+        filename = os.path.basename(f)
+        match = re.search(r"run(\d+)", filename)
+        run_id = int(match.group(1))
 
-    # Hierarchical clustering on 1 - coassoc
-    consensus = AgglomerativeClustering(
-        n_clusters=n_clusters, metric="precomputed", linkage="complete"
-    ).fit_predict(1 - coassoc)
+        df = pd.read_csv(f)
 
-    return consensus
+        # Identify prob columns
+        prob_cols = [c for c in df.columns if c.startswith("cluster_") and c.endswith("_prob")]
 
+        # Assign the cluster with max probability
+        df["assigned_cluster"] = df[prob_cols].idxmax(axis=1).str.replace("_prob", "")
 
-def compute_weighted_majority_vote(labels_subset, weights=None):
-    """
-    Compute weighted majority vote consensus.
-    labels_subset: list of aligned label arrays (runs), shape = (n_runs, n_samples)
-    weights: array-like of length n_runs, normalized to sum to 1 (or None for equal)
-    """
-    labels_array = np.vstack(labels_subset)  # shape = (n_runs, n_samples)
-    n_runs, n_samples = labels_array.shape
+        # Count per-cluster assignments
+        counts = df["assigned_cluster"].value_counts().to_dict()
 
-    if weights is None:
-        weights = np.ones(n_runs) / n_runs
+        # Check if any cluster < threshold
+        small = {cl: n for cl, n in counts.items() if n < threshold}
 
-    consensus = []
-    for i in range(n_samples):  # iterate over samples
-        column = labels_array[:, i]
-        scores = defaultdict(float)
-        for run_idx, label in enumerate(column):
-            scores[label] += weights[run_idx]
-        consensus.append(max(scores.items(), key=lambda x: x[1])[0])
-    return np.array(consensus)
+        if small:
+            problem_runs[run_id] = small
 
-def summarize_clustering_results(results, ghs_ids, n_clusters, use_soft=False, soft_dir=None):
+    return problem_runs
+
+def summarize_clustering_results(results, ghs_ids, n_clusters, dir=None):
     df_summary = pd.DataFrame({'GHS_urban_area_id': ghs_ids})
 
-    if use_soft:
-        if soft_dir is None:
-            raise ValueError("Must provide soft_dir when use_soft=True")
+    if dir is None:
+        raise ValueError("Must provide dir")
 
-        # Load and align soft assignments from all runs
-        final_labels, aligned_stack, std_probs, entropies = load_and_align_soft_probs(n_clusters, n_runs, soft_dir)
+    # 1. Load hard predictions and silhouettes for all runs
+    all_preds, silhouettes = get_preds_and_silhouettes(results, n_clusters, 'dec')
 
+    n_runs = len(all_preds)
+    print(f"Loaded {n_runs} DEC runs")
 
-        '''
-        # 1. Remove explicitly excluded runs
-        excluded_runs = {3, 9, 10}
-        # excluded_runs = {3,9,10,27}
+    # 2. exclude problematic runs + silhouette weighting
+    manual_excluded = detect_small_clusters(pattern=f"data/clustering_results/dec_soft_assignments_run*_clusters4.csv", threshold=10)
+    print(manual_excluded)
+    manual_excluded ={}
 
-        # Get predictions + silhouettes (for all runs)
-        all_preds, silhouettes = get_preds_and_silhouettes(results, n_clusters, 'dec')
+    # Step 1: start with all runs except manually excluded
+    candidate_indices = [i for i in range(n_runs) if i not in manual_excluded]
 
-        # Build the index list of runs to keep
-        included_indices = [i for i in range(len(all_preds)) if i not in excluded_runs]
+    # Step 2: apply silhouette-based filtering
+    silhouettes_array = np.array(silhouettes)[candidate_indices]
+    silhouette_threshold = np.percentile(silhouettes_array, 0)
 
-        # Filter predictions and silhouettes
-        all_preds = [all_preds[i] for i in included_indices]
-        silhouettes = np.array([silhouettes[i] for i in included_indices])
+    silhouette_mask = silhouettes_array >= silhouette_threshold
+    included_indices = [candidate_indices[i] for i in range(len(candidate_indices)) if silhouette_mask[i]]
 
-        # aligned_stack must be filtered in the SAME order
-        aligned_stack = aligned_stack[included_indices]     # shape → (n_kept_runs, n_samples, n_clusters)
+    print(f"Initially had {n_runs} runs")
+    print(f"Excluded manually: {manual_excluded}")
+    print(f"After silhouette filtering: {len(included_indices)} runs kept")
 
-        # 2. Filter again based on percentile of silhouettes (quality filtering)
-        quality_mask = silhouettes > np.percentile(silhouettes, 27)
+    # Filter predictions and silhouettes using final indices
+    all_preds = [all_preds[i] for i in included_indices]
+    silhouettes = np.array([silhouettes[i] for i in included_indices])
 
-        # Final high-quality runs
-        silhouettes = silhouettes[quality_mask]
-        aligned_high_quality = aligned_stack[quality_mask]
+    # 3. Choose the best run as reference
+    best_idx = np.argmax(silhouettes)
+    ref_pred = all_preds[best_idx]
+    print(f"Using run {included_indices[best_idx]} as reference for alignment")
 
-        # 3. Compute consensus soft probabilities
-        mean_probs = aligned_high_quality.mean(axis=0)
+    # 4. HARD-LABEL alignment
+    aligned_hard = []
+    for pred in all_preds:
+        aligned = align_clusters(ref_pred, pred)
+        aligned_hard.append(aligned)
 
+    aligned_hard = np.vstack(aligned_hard)   # (runs, samples)
+    print("Aligned hard labels shape:", aligned_hard.shape)
 
-        '''
-        all_preds, silhouettes = get_preds_and_silhouettes(results, n_clusters, 'dec')
+    # 5. Convert aligned hard labels to one-hot matrices
+    one_hot = np.eye(n_clusters)[aligned_hard]  # (runs, samples, clusters)
+    print(one_hot)
 
-        # Compute weights from silhouettes
-        weights = np.array(silhouettes)
-        weights = (weights - weights.min()) / (weights.max() - weights.min() + 1e-8)
-        weights = 1 / (1 + np.exp(-12 * (weights - 0.3)))
-        weights /= weights.sum()
-        
-        # Weighted average of soft probabilities
-        mean_probs = np.tensordot(weights, aligned_stack, axes=([0], [0]))  # (n_samples, n_clusters)
+    # 6. Unweighted consensus (simple average of one-hot vectors)
+    w = np.ones(len(silhouettes)) / len(silhouettes)
 
+    mean_probs = np.tensordot(w, one_hot, axes=([0], [0]))  # (samples, clusters)
+    final_labels = mean_probs.argmax(axis=1)
+    consensus_labels_maj = final_labels
 
-        final_labels = mean_probs.argmax(axis=1)
+    # 7. Compute entropies of the consensus probabilities
+    entropies = -np.sum(mean_probs * np.log(mean_probs + 1e-12), axis=1)
 
-        consensus_labels_maj = final_labels
+    # 8. Output final consensus
+    consensus_df = pd.DataFrame({
+        "GHS_urban_area_id": ghs_ids,
+        "consensus_label_majority": final_labels,
+        "entropy": entropies
+    })
 
-        consensus_df = pd.DataFrame({
-            'GHS_urban_area_id': ghs_ids,
-            'consensus_label_majority': consensus_labels_maj,
-            'entropy': entropies
-        })
-
-        for c in range(n_clusters):
-            consensus_df[f"mean_prob_cluster_{c}"] = mean_probs[:, c]
-
-    else:
-        # Filter DEC results for this k
-        filtered = results[
-            (results['n_clusters'] == n_clusters) &
-            (results['method'] == 'dec')
-        ]
-
-        if filtered.empty:
-            print(f"No DEC results for {n_clusters} clusters.")
-            return None
-
-        all_preds, silhouettes = get_preds_and_silhouettes(results, n_clusters, 'dec')
-        ref_pred = all_preds[0]
-        aligned_preds = [ref_pred if i == 0 else align_clusters(ref_pred, pred) for i, pred in enumerate(all_preds)]
-
-        weights = np.array(silhouettes)
-        weights = (weights - weights.min()) / (weights.max() - weights.min() + 1e-8)
-        weights = 1 / (1 + np.exp(-15 * (weights - 0.5)))
-        weights /= weights.sum()
-
-        consensus_labels_maj = compute_weighted_majority_vote(aligned_preds, weights)
-        consensus_labels_eac = compute_assignment_eac(aligned_preds, n_clusters=n_clusters)
-
-        consensus_df = pd.DataFrame({
-            'GHS_urban_area_id': ghs_ids,
-            'consensus_label_eac': consensus_labels_eac,
-            'consensus_label_majority': consensus_labels_maj
-        })
+    for c in range(n_clusters):
+        consensus_df[f"mean_prob_cluster_{c}"] = mean_probs[:, c]
 
     # Representative scores (same regardless of soft/hard)
     rep_df = compute_representative_scores(
@@ -280,27 +194,18 @@ def summarize_clustering_results(results, ghs_ids, n_clusters, use_soft=False, s
     return final_df
 
 
-
-
 if __name__ == "__main__":
-    os.chdir("/Users/simon/Documents/repo/cities-learning-DEC")
+    os.chdir("/Users/simon/Documents/repo/cities-learning-dec")
 
-    n_runs = 40
+    n_runs = 50
     cities_clean_scaled_df = pd.read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_scaled.parquet")
     ghs_ids = cities_clean_scaled_df["GHS_urban_area_id"].values
     performance_scores = pd.read_csv("data/clustering_results/raw_clustering_scores.csv")
 
-    '''
-    latent_runs = [
-        joblib.load(f"clustering_models/latent_representation/latent_run_{run_id}.pkl").drop(columns=['GHS_urban_area_id']).values
-        for run_id in range(n_runs)
-    ]
-    '''
-
     cluster_range = range(4,5)
 
     for n_clusters in cluster_range:
-        df_final = summarize_clustering_results(performance_scores, ghs_ids, n_clusters, use_soft=True, soft_dir="data/clustering_results")
+        df_final = summarize_clustering_results(performance_scores, ghs_ids, n_clusters, dir="data/clustering_results")
         if df_final is None:
             continue
         out_path = f"data/clustering_results/dec_clusters_k{n_clusters}.csv"

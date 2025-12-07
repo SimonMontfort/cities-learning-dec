@@ -80,7 +80,7 @@ variables = [
     'GHS_population', 'GHS_population_growth',
     'GHS_population_density', 'GHS_population_density_growth',
     'GHS_GDP_PPP', 'GHS_GDP_PPP_growth', 'GHS_critical_infra', 'GHS_greenness_index',
-    'GHS_precipitation', 'hdd', 'cdd'
+    'GHS_precipitation', 'hdd'
 ]
 
 cities_clean_sub = cities_clean[variables + ['GHS_urban_area_id']].copy()
@@ -526,7 +526,7 @@ def flatten_performance_scores(results):
 
 if __name__ == '__main__':
     cluster_range = range(3,12)
-    n_runs = 40
+    n_runs = 20
 
     performance_scores = run_experiments(cluster_range, n_runs)
 
