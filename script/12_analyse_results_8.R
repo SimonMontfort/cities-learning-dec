@@ -35,6 +35,8 @@ library(ggtext)
 library(ggpp)
 library(ggrepel)
 library(cowplot)
+library(ggpattern)
+library(ggh4x)
 
 ################################################################################
 # load data
@@ -68,6 +70,8 @@ clean_places <- clean_places %>%
   mutate(city_id = ifelse(is.na(city_intersection_id), city_word_match_id, city_intersection_id)) %>% 
   select(id, city_id) %>% 
   distinct() 
+
+write.csv(clean_places, "data/geoparser/clean_places_augmented_dedup.csv")
 
 n_studies_per_city <- clean_places %>% 
   group_by(city_id) %>% 
@@ -131,7 +135,7 @@ co_vars <- c("GHS_population", "GHS_population_growth", "GHS_population_density"
              # , "GHS_hosp_pc"
              # , "GHS_road_len"
              # , "odiac_norm"
-             )
+)
 co_vars_formatted <- c("Population", "Population growth", "Population density", "Population density growth", 
                        "65+ population share", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
                        "Critical infrastructure", 
@@ -143,10 +147,10 @@ co_vars_formatted <- c("Population", "Population growth", "Population density", 
                        # , "Hospitals p.c."
                        # , "Road density"
                        # , "Emissions p.c."
-                       )
+)
 reg_vars <- c("NORTH-AMERICA", "SOUTH-AMERICA", "EUROPE", "AFRICA", "ASIA", "OCEANIA" , "SMALL ISLANDS")
 reg_vars_wg2 <- c("North America", "South America", "Europe", "Africa", "Asia", "Australasia", "Small Islands")
-  
+
 cluster_names <- data.frame(
   consensus_label_majority = 0:3,
   cluster_name = c(
@@ -187,7 +191,7 @@ theme_SM <- function(){
           strip.placement = "outside",
           text = element_text(size = 12, 
                               # family = "Myriad Pro"
-                              ),
+          ),
           axis.text.x = element_text(colour = "grey30", angle = 45, hjust = 1, vjust = 1),
           axis.text.y = element_text(colour = "grey30"),
           axis.ticks.length = unit(.2, "cm"),
@@ -226,7 +230,7 @@ rename_co_vars <- function(df, column) {
     "GHS_old_pop" =  "65+ population share",
     # "GHS_road_len" = "Road density"
     # , "GHS_hosp_pc" = "Hospitals p.c."
-    "odiac_norm" = "Emissions p.c."
+    "odiac_norm" = "CO2 emissions p.c."
   )
   
   column <- rlang::ensym(column)
@@ -280,7 +284,7 @@ clust <- clust %>%
          GHS_GDP_PPP = GHS_GDP_PPP/1000) %>% 
   select(GHS_urban_area_id, consensus_label_majority, 
          co_vars, similarity, mean_prob, entropy
-         ) %>% 
+  ) %>% 
   left_join(cites_ipcc_regions, by= c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(n_studies_per_city, by = c("GHS_urban_area_id" = "city_id")) %>% 
   left_join(cluster_names, by = "consensus_label_majority") %>% 
@@ -364,10 +368,10 @@ library(xtable)
 print(xtable(summ_stats,
              caption = "Summary Statistics by Cluster",
              # align = c("l", "l", "r", "r", "r", "r", "r", "r", "r")
-             ),
-      include.rownames = FALSE,
-      tabular.environment = "longtable",
-      floating = FALSE)
+),
+include.rownames = FALSE,
+tabular.environment = "longtable",
+floating = FALSE)
 
 # ################################################################################
 # # summary statistics: regional deviations
@@ -673,7 +677,7 @@ emmissions_dat <- emmissions %>%
   )
 
 emmissions_box_dat <- emmissions_dat %>% 
-  filter(Year == 2022) 
+  filter(Year == 2020) 
 
 # Calculate medians for coloring
 median_data <- emmissions_box_dat %>%
@@ -767,7 +771,7 @@ ghsl_clean %>%
   # left_join(emmissions_box_dat %>% dplyr::select(ID_UC_G0, odiac_norm), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   dplyr::select(GHS_urban_area_id, consensus_label_majority, co_vars, 
                 # GHS_female_gender_index, GHS_HDI, odiac_norm
-                ) %>% 
+  ) %>% 
   pivot_longer(-c(GHS_urban_area_id, consensus_label_majority), names_to = "variable") %>% 
   mutate(clustering = ifelse(variable %in% co_vars, "Clustering", "Outcomes")) %>% 
   rename_co_vars("variable") %>% 
@@ -797,9 +801,9 @@ box_plot_add_covs_dat <- ghsl_clean %>%
   mutate(clustering = ifelse(variable %in% co_vars, "Clustering", "Outcomes")) %>% 
   rename_co_vars("variable") %>% 
   mutate(# variable = ifelse(variable == "GHS_female_gender_index", "Female gender index", variable),
-  #        variable = ifelse(variable == "GHS_HDI", "Human Development index", variable),
-         variable = ifelse(variable == "odiac_norm", "CO2 emissions p.c.", variable),
-         variable = factor(variable, levels = c(co_vars_formatted, "CO2 emissions p.c."))) %>%
+    #        variable = ifelse(variable == "GHS_HDI", "Human Development index", variable),
+    variable = ifelse(variable == "odiac_norm", "CO2 emissions p.c.", variable),
+    variable = factor(variable, levels = c(co_vars_formatted, "CO2 emissions p.c."))) %>%
   left_join(cluster_names, by = c("consensus_label_majority" = "consensus_label_majority")) %>% 
   group_by(variable) %>%
   mutate(
@@ -830,127 +834,126 @@ to_label <- desc_geo %>%
   slice_max(mean_prob, n = 3)
 
 write.csv(to_label %>% as.data.frame() %>% select(ID_UC_G0, cluster_name, Region, GC_UCN_MAI_2025, GC_CNT_GAD_2025, mean_prob, n_studies), "data/case_selection/three_representative_cities_per_regions.csv")
-# 
-# to_label %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025, Region, cluster_name)
-# 
-# box_plot_list <- list()
-# box_plot_add_covs_just_point <- list()
-# p_types_map <- list()
-# # min_cl <- min(as.numeric(as.character(desc_dat_long$consensus_label_majority)))
-# # max_cl <- max(as.numeric(as.character(desc_dat_long$consensus_label_majority)))
-# for (cluster in cluster_names$cluster_name) {
-#   
-#   # Plot the maps with centroids
-#   p_types_map[[cluster]] <- desc_geo %>% 
-#     filter(cluster_name == cluster) %>% 
-#     arrange(representative_city) %>% 
-#     ggplot() +
-#     geom_sf(data = world, fill = "grey90", color = "white") +  # World map with light gray color
-#     geom_sf(aes(geometry = centroid, 
-#                 col = mean_prob, fill = mean_prob, alpha = mean_prob, size = mean_prob), lwd = 0) + 
-#     ggrepel::geom_label_repel(
-#       data = to_label %>% 
-#         filter(cluster_name == cluster),
-#       aes(label = GC_UCN_MAI_2025, 
-#           geometry = centroid),
-#       stat = "sf_coordinates", alpha=.5, size = 3.5, 
-#     ) +
-#     scale_color_gradient2(low="white", mid="#ffe0a3", high="#963d03",
-#                                                   limits = c(0, 1), oob = scales::squish) +
-#     scale_alpha_continuous(range = c(0.05, 1)) +
-#     scale_size_continuous(range = c(.05, 1)) +
-#     geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
-#     coord_sf(crs = proj_robin) + 
-#     # annotate(
-#     #   "label",
-#     #   x = -Inf, y = Inf,
-#     #   label = cluster_names$cluster_name[cluster_names$cluster_name == cluster],
-#     #   hjust = -0.1, vjust = 1.1,
-#     #   size = 4,
-#     #   fill = "white",
-#     #   label.size = 0.3
-#     # ) +
-#     theme_SM() +
-#     theme(
-#       panel.border = element_rect(color = NA),
-#       legend.position = "none",
-#       plot.margin = margin(c(-1,-2,-1,-2), "cm")
-#     ) +
-#     labs(col = "Cities", x = "", y = "")
-#   
-#   # Compute means by cluster and variable
-#   means_df <- box_plot_add_covs_dat %>%
-#     group_by(cluster_name, variable) %>%
-#     summarise(mean_val = mean(normalized_value, na.rm = TRUE), .groups = "drop") %>% 
-#     filter(cluster_name == cluster) %>% 
-#     select(-cluster_name) 
-#   
-#   show_legend <- FALSE
-#   show_legend <- cluster == "Type 1"
-#   
-#   # Plot
-#   box_plot_add_covs_just_point[[cluster]] <- box_plot_add_covs_dat %>% 
-#     filter(cluster_name == cluster) %>% 
-#     select(-cluster_name) %>% 
-#     ggplot(aes(x = variable, y = normalized_value)) +
-#     geom_hline(yintercept = 1, lty = 2) +
-#     geom_violin(alpha = 0.9, color = NA, scale = "width", aes(fill = clustering)) +
-#     scale_fill_manual(values = c("#ffe0a3", "cornflowerblue")) +
-#     geom_boxplot(width = 0.15, outlier.size = 0.5, color = "grey", outliers = F) +
-#     geom_point(
-#       data = means_df,
-#       aes(x = variable, y = mean_val, shape = "Mean"),
-#       size = 2, fill = "darkred", color = "black", inherit.aes = FALSE
-#     ) +
-#     geom_label(
-#       data = means_df,
-#       aes(x = variable, y = mean_val, label = round(mean_val, 2), vjust = ifelse(mean_val >=8,1.2,-.8)),
-#       size = 3, fill = "white", color = "black",   
-#       label.size = 0, alpha = 0.7, inherit.aes = FALSE
-#     ) +
-#     scale_shape_manual(values = c("Mean" = 21), name = "") +
-#     scale_y_continuous(
-#       trans = "log2",
-#       breaks = c(0.125, 0.25, 0.5, 1, 2, 4, 8, 16),
-#       labels = c("1/8", "1/4", "1/2", "1", "2", "4", "8", "16"),
-#       limits = c(0.05, 19)
-#     ) +
-#     theme_SM() +
-#     theme(
-#       axis.text.x = element_text(angle = 25, hjust = 1),
-#       legend.position = if (show_legend) c(.89, .8) else "none",
-#       legend.justification = "center",
-#       legend.box.just = "center", 
-#       legend.box.background = element_rect(color = "grey", size = 0.2),
-#       legend.box.margin = margin(rep(2, 4)),
-#       legend.background = element_blank(),
-#       legend.spacing.y = unit(0.01, "lines"),
-#       legend.box = "vertical",
-#       axis.text = element_text(size = 9),
-#       axis.title = element_text(size = 9),
-#       plot.margin = margin(c(-6,3,-2,3), "cm")
-#     ) +
-#     labs(
-#       x = "",
-#       y = "Normalized value",
-#       title = ""
-#     )
-#   
-#   plot.with.inset <-
-#     ggdraw() +
-#     draw_plot(p_types_map[[cluster]], y = .25) +
-#     draw_plot(box_plot_add_covs_just_point[[cluster]], x = 0, y = 0, width = .98, height = .6) 
-#   
-#   plot.with.inset
-#   
-#   box_plot_list[[cluster]] <- plot.with.inset
-# }
-# 
-# # order
-# box_plot_list <- box_plot_list[levels(cluster_names$cluster_name)]
-# fig1 <- plot_grid(plotlist = box_plot_list, ncol = 2, labels = "auto", align = "v")
-# ggsave(fig1, filename = "plots/fig1.pdf", width = 10, height = 10)
-#   
+
+to_label %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025, Region, cluster_name)
+
+box_plot_list <- list()
+box_plot_add_covs_just_point <- list()
+p_types_map <- list()
+# min_cl <- min(as.numeric(as.character(desc_dat_long$consensus_label_majority)))
+# max_cl <- max(as.numeric(as.character(desc_dat_long$consensus_label_majority)))
+for (cluster in cluster_names$cluster_name) {
+  
+  # Plot the maps with centroids
+  p_types_map[[cluster]] <- desc_geo %>%
+    filter(cluster_name == cluster) %>%
+    ggplot() +
+    geom_sf(data = world, fill = "grey90", color = "white") +  # World map with light gray color
+    geom_sf(aes(geometry = centroid,
+                col = mean_prob, fill = mean_prob, alpha = mean_prob, size = mean_prob), lwd = 0) +
+    ggrepel::geom_label_repel(
+      data = to_label %>%
+        filter(cluster_name == cluster),
+      aes(label = GC_UCN_MAI_2025,
+          geometry = centroid),
+      stat = "sf_coordinates", alpha=.5, size = 3.5,
+    ) +
+    scale_color_gradient2(low="white", mid="#ffe0a3", high="#963d03",
+                          limits = c(0, 1), oob = scales::squish) +
+    scale_alpha_continuous(range = c(0.05, 1)) +
+    scale_size_continuous(range = c(.05, 1)) +
+    geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
+    coord_sf(crs = proj_robin) +
+    # annotate(
+    #   "label",
+    #   x = -Inf, y = Inf,
+    #   label = cluster_names$cluster_name[cluster_names$cluster_name == cluster],
+    #   hjust = -0.1, vjust = 1.1,
+    #   size = 4,
+    #   fill = "white",
+    #   label.size = 0.3
+    # ) +
+    theme_SM() +
+    theme(
+      panel.border = element_rect(color = NA),
+      legend.position = "none",
+      plot.margin = margin(c(-1,-2,-1,-2), "cm")
+    ) +
+    labs(col = "Cities", x = "", y = "")
+  
+  # Compute means by cluster and variable
+  means_df <- box_plot_add_covs_dat %>%
+    group_by(cluster_name, variable) %>%
+    summarise(mean_val = mean(normalized_value, na.rm = TRUE), .groups = "drop") %>%
+    filter(cluster_name == cluster) %>%
+    select(-cluster_name)
+  
+  show_legend <- FALSE
+  show_legend <- cluster == "Type 1"
+  
+  # Plot
+  box_plot_add_covs_just_point[[cluster]] <- box_plot_add_covs_dat %>%
+    filter(cluster_name == cluster) %>%
+    select(-cluster_name) %>%
+    ggplot(aes(x = variable, y = normalized_value)) +
+    geom_hline(yintercept = 1, lty = 2) +
+    geom_violin(alpha = 0.9, color = NA, scale = "width", aes(fill = clustering)) +
+    scale_fill_manual(values = c("#ffe0a3", "cornflowerblue")) +
+    geom_boxplot(width = 0.15, outlier.size = 0.5, color = "grey", outliers = F) +
+    geom_point(
+      data = means_df,
+      aes(x = variable, y = mean_val, shape = "Mean"),
+      size = 2, fill = "darkred", color = "black", inherit.aes = FALSE
+    ) +
+    geom_label(
+      data = means_df,
+      aes(x = variable, y = mean_val, label = round(mean_val, 2), vjust = ifelse(mean_val >=8,1.2,-.8)),
+      size = 3, fill = "white", color = "black",
+      label.size = 0, alpha = 0.7, inherit.aes = FALSE
+    ) +
+    scale_shape_manual(values = c("Mean" = 21), name = "") +
+    scale_y_continuous(
+      trans = "log2",
+      breaks = c(0.125, 0.25, 0.5, 1, 2, 4, 8, 16),
+      labels = c("1/8", "1/4", "1/2", "1", "2", "4", "8", "16"),
+      limits = c(0.05, 19)
+    ) +
+    theme_SM() +
+    theme(
+      axis.text.x = element_text(angle = 25, hjust = 1),
+      legend.position = if (show_legend) c(.89, .8) else "none",
+      legend.justification = "center",
+      legend.box.just = "center",
+      legend.box.background = element_rect(color = "grey", size = 0.2),
+      legend.box.margin = margin(rep(2, 4)),
+      legend.background = element_blank(),
+      legend.spacing.y = unit(0.01, "lines"),
+      legend.box = "vertical",
+      axis.text = element_text(size = 9),
+      axis.title = element_text(size = 9),
+      plot.margin = margin(c(-6,3,-2,3), "cm")
+    ) +
+    labs(
+      x = "",
+      y = "Normalized value",
+      title = ""
+    )
+  
+  plot.with.inset <-
+    ggdraw() +
+    draw_plot(p_types_map[[cluster]], y = .25) +
+    draw_plot(box_plot_add_covs_just_point[[cluster]], x = 0, y = 0, width = .98, height = .6)
+  
+  plot.with.inset
+  
+  box_plot_list[[cluster]] <- plot.with.inset
+}
+
+# order
+box_plot_list <- box_plot_list[levels(cluster_names$cluster_name)]
+fig1_old <- plot_grid(plotlist = box_plot_list, ncol = 2, labels = "auto", align = "v")
+ggsave(fig1_old, filename = "plots/fig1_old.pdf", width = 10, height = 10)
+
 # ggsave(box_plot_list[[1]], filename = "plots/type_1.pdf", width = 5, height = 3.8)
 # ggsave(box_plot_list[[2]], filename = "plots/type_2.pdf", width = 5, height = 3.8)
 # ggsave(box_plot_list[[3]], filename = "plots/type_3.pdf", width = 5, height = 3.8)
@@ -1262,7 +1265,13 @@ p_share_mixed <- desc_geo_exlc %>%
   scale_x_discrete(expand = expansion(add = c(.3, 1.2))) +
   geom_text(aes(label = pct),
             position = position_stacknudge(x = .22, vjust = 0.5), size = 3, hjust = 0) +
-  scale_fill_manual(values = rev(c( "grey", "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  scale_fill_manual(values = c(
+    "Type 1" = "#E41A1C",
+    "Type 2" = "#377EB8",
+    "Type 3" = "#4DAF4A",
+    "Type 4" = "#984EA3",
+    "mixed" = "grey"
+  )) + 
   labs(x = "", y ="Percentage", title = "Mixed type percentage") +
   guides(
     fill = guide_legend(
@@ -1331,9 +1340,6 @@ p_co_assignment_prob
 
 
 # 3) stability
-
-library(dplyr)
-
 boot_fun <- function(data, indices) {
   d <- data[indices, ] %>% as.data.frame()
   
@@ -1346,7 +1352,7 @@ boot_fun <- function(data, indices) {
   
   mean(d$mixed)
 }
-
+library(boot)
 
 boot_results <- boot(desc_geo_exlc, boot_fun, R = 5000)
 
@@ -1376,9 +1382,9 @@ p_stability <- ggplot(boot_df, aes(boot_vals)) +
   theme_SM()
 p_stability
 
-figA2 <- ggarrange(p_assign_probs, p_share_mixed, p_co_assignment_prob, p_stability, labels = "auto", align = "hv")
-figA2
-ggsave(figA2, file = "plots/figA2.pdf", height = 10, width = 10)
+figA3 <- ggarrange(p_assign_probs, p_share_mixed, p_co_assignment_prob, p_stability, labels = "auto", align = "hv")
+figA3
+ggsave(figA3, file = "plots/figA3.pdf", height = 10, width = 10)
 
 ################################################################################
 # regional cluster characterisation (fig 2)
@@ -1439,7 +1445,7 @@ p_type_region_median_diffs <- df2 %>%
          name = factor(name, levels = rev(c(reg_vars_wg2,  levels(cluster_names$cluster_name), "mixed")))) %>%
   ggplot(aes(var, name, fill = diff)) +
   geom_tile(width=0.9, height=0.9) +
-  geom_text(aes(label = round(diff,0)), size = 2) +
+  geom_text(aes(label = round(diff,0)), size = 3) +
   scale_fill_gradient2() +
   facet_grid(stat_type~., scales = "free_y", space = "free") +
   theme_SM() +
@@ -1447,7 +1453,7 @@ p_type_region_median_diffs <- df2 %>%
         axis.title = element_blank()) + 
   labs(x = "", y = "") 
 p_type_region_median_diffs
-ggsave(p_type_region_median_diffs, file = "plots/p_type_region_median_diffs.pdf", height = 8, width = 7)
+ggsave(p_type_region_median_diffs, file = "plots/p_type_region_median_diffs.pdf", height = 6, width = 7)
 
 
 
@@ -1849,6 +1855,7 @@ test_assign_probs_secondary_type <- clust_probs %>%
   scale_color_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
   labs(title = "primary and secondary assignment probabilities by region and type") +
   theme_SM() + 
+  labs(x = "", y = "Probability") +
   theme(legend.position = "bottom")
 test_assign_probs_secondary_type
 ggsave(test_assign_probs_secondary_type, file = "plots/test_assign_probs_secondary_type.pdf", width = 10, height = 10)
@@ -1865,7 +1872,11 @@ test_region_asia <- desc_geo %>%
   geom_col(position = "stack", width = .4, col = "black", size = .2) +
   geom_text(aes(label = paste0(round(share * 100, 0), "%")),
             position = position_stacknudge(x = .22, vjust = 0.5), size = 3, hjust = 0) +
-  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  scale_fill_manual(values = c(
+    "Type 1" = "#E41A1C",
+    "Type 2" = "#377EB8",
+    "Type 3" = "#4DAF4A",
+    "Type 4" = "#984EA3")) +
   theme_SM() + 
   theme(legend.position = "bottom")
 ggsave(test_region_asia, file = "plots/test_region_asia.pdf", width = 20, height = 5)
@@ -1952,7 +1963,11 @@ p_box_characteristics <- box_plot_add_covs_dat %>%
   geom_hline(yintercept = 1, lty = 2) +
   geom_violin(alpha = 0.5, color = NA, scale = "width", aes(fill = cluster_name), trim = TRUE) +
   geom_boxplot(width = 0.15, outlier.size = 0.5, color = "grey", outliers = F, aes(fill = cluster_name)) +
-  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  scale_fill_manual(values = c(
+    "Type 1" = "#E41A1C",
+    "Type 2" = "#377EB8",
+    "Type 3" = "#4DAF4A",
+    "Type 4" = "#984EA3")) +
   geom_point(
     data = means_df,
     aes(x = cluster_name, y = mean_val, shape = "Mean value by type"),
@@ -2088,11 +2103,11 @@ plot_covariate_boxplot <- function(box_plot_add_covs_dat, clust_probs, selected_
       lower = Q1 - 10 * IQR,
       upper = Q3 + 15 * IQR
     )
-
+  
   filtered_data <- box_plot_add_covs_dat %>%
     filter(value >= iqr_limits$lower & value <= iqr_limits$upper)
-
-
+  
+  
   
   # Create plot
   p <- ggplot(cluster_data, aes(x = variable, y = normalized_value)) +
@@ -2104,7 +2119,7 @@ plot_covariate_boxplot <- function(box_plot_add_covs_dat, clust_probs, selected_
       data = highlight_df,
       aes(x = variable, y = highlight_val, 
           # shape = "Example city"
-          ),
+      ),
       size = 2, fill = "darkred", color = "black", inherit.aes = FALSE
     ) +
     geom_label(
@@ -2155,7 +2170,7 @@ plot_covariate_boxplot <- function(box_plot_add_covs_dat, clust_probs, selected_
 
 
 plot_multiple_cities <- function(city_names = NULL, city_ids = NULL, ghsl, clust_probs, covariate_data, output_dir = "plots", height = 12, limits = NULL) {
-
+  
   highlight_ids <- c()
   if (!is.null(city_names)){
     for (city_name in city_names) {
@@ -2172,14 +2187,14 @@ plot_multiple_cities <- function(city_names = NULL, city_ids = NULL, ghsl, clust
       highlight_ids <- c(highlight_ids, highlight_id)
     }
   }
-
+  
   highlight_ids <- c(highlight_ids, city_ids)
   
   
   plot_list <- list()
   for (highlight_id in highlight_ids) {
     city_name <- ghsl$GC_UCN_MAI_2025[ghsl$ID_UC_G0 %in% highlight_id]
-
+    
     # Get cluster name
     selected_cluster <- covariate_data %>%
       filter(GHS_urban_area_id %in% highlight_id) %>%
@@ -2226,7 +2241,7 @@ plot_multiple_cities(
   city_ids = city_ids[1:5],
   clust_probs = clust_probs,
   covariate_data = box_plot_add_covs_dat,
-  output_dir = "plots/figA3.pdf",
+  output_dir = "plots/figA4.pdf",
   limits = c(.0625,32)
   # height = 12
 )
@@ -2238,7 +2253,7 @@ plot_multiple_cities(
   city_ids = city_ids[6:10],
   clust_probs = clust_probs,
   covariate_data = box_plot_add_covs_dat,
-  output_dir = "plots/figA4.pdf",
+  output_dir = "plots/figA5.pdf",
   limits = c(.0625,32)
   # height = 12
 )
@@ -2275,15 +2290,13 @@ case_ex <- case_ex %>%
 
 
 # analyse and plot learning potential
-library(dplyr)
-library(matrixStats)
-library(purrr)
+# library(matrixStats)
+# library(purrr)
 
 examples_dat <- ghsl %>% ## TODO: right continent definition
   mutate(geom = st_centroid(geom)) %>%
   select(ID_UC_G0, GC_UCN_MAI_2025, GC_DEV_USR_2025, geom) %>%
   left_join(clust, by = c("ID_UC_G0" = "GHS_urban_area_id")) %>%
-  # left_join(cluster_names, by = "consensus_label_majority") %>%
   left_join(clust_probs %>%
               select(GHS_urban_area_id, mean_prob, secondary_cluster_name) %>%
               pivot_wider(names_from = secondary_cluster_name, values_from = mean_prob), by = c("ID_UC_G0" = "GHS_urban_area_id"))
@@ -2352,7 +2365,7 @@ for (i in seq_len(nrow(nearest_indices_t))) {
 results_df
 
 examples_dat_learning <- examples_dat_learning %>% 
-  filter(!ID_UC_G0 %in% c(1624, 9932)) %>% # Shahadi, Baragashi are GHSL data errors
+  # filter(!ID_UC_G0 %in% c(1624, 9932)) %>% # Shahadi, Baragashi are GHSL data errors
   filter(ID_UC_G0 %in% results_df$learning_ids)
 
 examples_dat_teaching <- examples_dat_teaching %>% 
@@ -2402,7 +2415,7 @@ fig4 <- ggplot() +
   scale_fill_manual(values = c(
     "Type 1_learning"  = alpha("#E41A1C", 0.15), 
     "Type 1_teaching"  = "#E41A1C",
-
+    
     "Type 2_learning"  = alpha("#377EB8", 0.15),
     "Type 2_teaching"  = "#377EB8",
     
@@ -2419,8 +2432,6 @@ fig4 <- ggplot() +
   )) +
   
   ggnewscale::new_scale_colour() + 
-  
-  # scale_fill_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")) +
   
   geom_sf(data = examples_dat_teaching,
           aes(col = cluster_name),
@@ -2467,17 +2478,16 @@ fig4 <- ggplot() +
   scale_x_continuous(limits = c(st_bbox(examples_dat_learning_teaching)[1], st_bbox(examples_dat_learning_teaching)[3]))+
   scale_y_continuous(limits = c(st_bbox(examples_dat_learning_teaching)[2], st_bbox(examples_dat_learning_teaching)[4]))+
   
-  
   theme_void() +
   theme(
-    legend.position = c(0.01, 0.4),
+    legend.position = c(0.635, 0.35),
     legend.justification = c(0, 1),
     legend.box.just = "left",
     legend.title.position = "top",
     legend.direction = "vertical",
     legend.title = element_text(size = 7),
     legend.text = element_text(size = 7),
-    legend.box = "vertical",
+    legend.box = "horizonzal",
     legend.spacing.y = unit(.05, "cm"),
     legend.key.spacing = unit(0.01, "cm"),
     legend.background = element_blank(),
@@ -2491,7 +2501,7 @@ fig4
 ggsave(fig4, file = "plots/fig4.pdf", height = 4.5, width = 10)
 
 
-fig5 <- case_ex %>%
+figA6 <- case_ex %>%
   mutate(wg_ipcc = factor(wg_ipcc, levels = c("adaptation", "mitigation", "cross-cutting"))) %>%
   group_by(wg_ipcc, cluster_name) %>%
   summarise(n_solution_studies = n(), .groups = "drop") %>%
@@ -2508,9 +2518,9 @@ fig5 <- case_ex %>%
   theme_SM() +
   labs(y = "", x = "") +
   theme(legend.position = "bottom")
-fig5
+figA6
 
-ggsave(fig5, file = "plots/fig5.pdf", width = 5, height = 5)
+ggsave(figA6, file = "plots/figA6.pdf", width = 5, height = 5)
 
 
 case_ex <- case_ex %>%
@@ -2566,7 +2576,7 @@ res_long <- res_long %>%
   filter(paste(cluster_name, city_name) %in% paste(case_ex$cluster_name, case_ex$city_name)) %>% 
   mutate(col = ifelse(`Services/Provisions` %in% c("Mobility", "Buildings", "Energy", "Waste","Carbon dioxide\nremoval"), 1, 2)) %>% 
   mutate(cluster_name = gsub(" ", "\n", cluster_name)) 
-  
+
 
 # Function to create heatmap for a given column
 plot_solution_heatmap <- function(res_long, col_value) {
@@ -2623,8 +2633,8 @@ p1 <- plot_solution_heatmap(res_long, 1)
 p2 <- plot_solution_heatmap(res_long, 2)
 
 # Combine plots
-fig6 <- ggarrange(p1 + theme(legend.position = "none"), p2)
-ggsave(fig6, file = "plots/fig6.pdf", height = 9, width = 10)
+fig5 <- ggarrange(p1 + theme(legend.position = "none"), p2)
+ggsave(fig5, file = "plots/fig5.pdf", height = 9, width = 10)
 
 ################################################################################
 # additional descriptives
@@ -2713,7 +2723,7 @@ growth_by_phase_anno <- growth_by_phase %>%
   summarise(n_studies = sum(n_studies)) %>% 
   mutate(n_studies_lag = lag(n_studies),
          pct_growth = round(100 * (n_studies - n_studies_lag) / n_studies_lag, 1))
-  
+
 
 # Add midpoint year of each phase for plotting
 phase_years <- tibble(
@@ -2804,7 +2814,7 @@ annotations <- data_phase %>%
 p_g_abs <- data_phase %>%
   filter(publication_year >= 1990
          # & publication_year <= 2022
-         ) %>%
+  ) %>%
   group_by(publication_year, cluster_name, Region) %>%
   summarise(n_studies = n(), .groups = "drop") %>%
   ggplot(aes(x = publication_year, y = n_studies, fill = Region)) +
@@ -2827,15 +2837,13 @@ p_g_abs <- data_phase %>%
         legend.position = c(.35,.7)) +
   guides(fill=guide_legend(nrow=3,byrow=TRUE))
 
-figA4 <- ggarrange(p_g_abs, p_g_rel, ncol = 1, labels = c("a", "b"), align = "v")
-ggsave(figA4, file = "plots/figA4.pdf", height = 9, width = 10) 
+figA7 <- ggarrange(p_g_abs, p_g_rel, ncol = 1, labels = c("a", "b"), align = "v")
+ggsave(figA7, file = "plots/figA7.pdf", height = 9, width = 10) 
 
 
 ################################################################################
 # Cities per cluster with and without research
 ################################################################################
-
-library(ggpattern)
 
 p_cities_per_cluster_n <- clust %>% 
   mutate(
@@ -2922,14 +2930,12 @@ p_cities_per_cluster_n <- clust %>%
   ) +
   labs(x = "", y = "",  subtitle = "Number of cities")
 p_cities_per_cluster_n
-# ggsave(p_cities_per_cluster_n, file = "plots/p_cities_per_cluster_n.pdf", width = 5, height = 5)
 
 ################################################################################
 # Number of studies per cluster
 ################################################################################
 
 p_n_studies <- clust %>% 
-  # left_join(cluster_names, by = "consensus_label_majority") %>% 
   group_by(cluster_name) %>% 
   summarise(n_studies = sum(n_studies)) %>% 
   mutate(cluster_name = factor(cluster_name, levels = rev(levels(cluster_name)))) %>%
@@ -3000,20 +3006,6 @@ test_scatter <- clust %>%
   theme_SM()
 ggsave(test_scatter, file = "plots/test_scatter_1.pdf", width = 10, height = 10)
 
-test_scatter <- clust %>% 
-  left_join(emmissions_box_dat %>% 
-              select(ID_UC_G0, ODIAC),
-            by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  left_join(cluster_names) %>% 
-  ggplot(aes(mean_prob, ODIAC)) + 
-  geom_point() +
-  geom_smooth(method = "lm") +
-  scale_y_continuous(transform = "log10") +
-  facet_wrap(~cluster_name) +
-  labs(title = "relationship cluster assignment probability and emissions") +
-  theme_SM()
-ggsave(test_scatter, file = "plots/test_scatter_2.pdf", width = 10, height = 10)
-
 ################################################################################
 # Similarity scores & Teaching/Learning Potentials
 ################################################################################
@@ -3027,7 +3019,7 @@ co_mat <- clust %>%
   select(GHS_urban_area_id, all_of(co_vars), consensus_label_majority) %>%
   left_join(cluster_names, by = "consensus_label_majority")
 
-  
+
 ## -----------------------------------------------------------
 ## 1. Prepare covariate matrix
 ## -----------------------------------------------------------
@@ -3062,24 +3054,38 @@ study_rows <- match(study_ids, co_mat$GHS_urban_area_id)
 
 library(proxy)
 
-sim_matrix <- proxy::simil(
+sim_matrix_with_studies <- proxy::simil(
   X,
   X[study_rows, , drop = FALSE],
   method = "cosine",
   by_rows = TRUE
 )
 
-sim_matrix <- as.matrix(sim_matrix)
+sim_matrix_with_studies <- as.matrix(sim_matrix_with_studies)
 
 # optional: scale cosine [-1,1] → [0,1]
-sim01 <- (sim_matrix + 1) / 2
+sim_with_studies <- (sim_matrix_with_studies + 1) / 2
+
+
+sim_matrix_all <- proxy::simil(
+  X,
+  X,
+  method = "cosine",
+  by_rows = TRUE
+)
+
+sim_matrix_all <- as.matrix(sim_matrix_all)
+
+# optional: scale cosine [-1,1] → [0,1]
+sim_all <- (sim_matrix_all + 1) / 2
 
 
 ## -----------------------------------------------------------
 ## 4. Compute similarity score per city
 ## -----------------------------------------------------------
 
-overall_similarity <- rowMeans(sim01, na.rm = TRUE)
+overall_similarity_with_studies <- rowMeans(sim_with_studies, na.rm = TRUE)
+overall_similarity_all <- rowMeans(sim_all, na.rm = TRUE)
 
 min_max_scale <- function(x){
   (x - min(x, na.rm = TRUE)) / 
@@ -3088,8 +3094,10 @@ min_max_scale <- function(x){
 
 co_mat <- co_mat %>%
   mutate(
-    similarity_raw = overall_similarity,
-    similarity_scaled = min_max_scale(similarity_raw)
+    similarity_raw_all = overall_similarity_all,
+    similarity_raw_all_scaled = min_max_scale(similarity_raw_all),
+    similarity_raw_with_studies = overall_similarity_with_studies,
+    similarity_raw_with_studies_scaled = min_max_scale(similarity_raw_with_studies)
   )
 
 
@@ -3132,22 +3140,56 @@ intersections_unique <- intersections %>%
 hexa_data <- world_hex %>%
   left_join(intersections_unique, by = "hex_id") %>%
   left_join(
-    co_mat %>% select(similarity_scaled, GHS_urban_area_id),
+    co_mat %>% select(similarity_raw_all_scaled, similarity_raw_with_studies_scaled, GHS_urban_area_id),
     by = c("ID_UC_G0" = "GHS_urban_area_id")
   ) %>%
   group_by(hex_id) %>%
-  summarise(similarity = mean(similarity_scaled, na.rm = TRUE)) %>%
-  filter(!is.na(similarity))
+  summarise(similarity_raw_all_scaled = mean(similarity_raw_all_scaled, na.rm = TRUE),
+            similarity_raw_with_studies_scaled = mean(similarity_raw_with_studies_scaled, na.rm = TRUE)) 
 
+table(is.na(hexa_data$similarity_raw_all_scaled), is.na(hexa_data$similarity_raw_with_studies_scaled))
 
 ## -----------------------------------------------------------
 ## 7. Plot similarity map
 ## -----------------------------------------------------------
 
-p_similarity_map <- hexa_data %>%
+p_similarity_map_all <- hexa_data %>%
+  filter(!is.na(similarity_raw_all_scaled)) %>% 
   ggplot() +
   geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
-  geom_sf(aes(fill = similarity), color = NA) +
+  geom_sf(aes(fill = similarity_raw_all_scaled), color = NA) +
+  scale_fill_viridis_c(option = "C", na.value = "grey") +
+  geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
+  annotate(
+    "label",
+    x = -Inf, y = Inf,
+    label = "Similarity to all cities",
+    hjust = -0.1, vjust = 1.2,
+    size = 3.5,
+    fill = "white",
+    label.size = 0.3
+  ) +
+  theme_SM() +
+  labs(y = "", x = "", fill = "Similarity") +
+  theme(
+    legend.justification = "center",
+    legend.direction = "horizontal",
+    legend.position = c(.5, .1),
+    legend.title = element_text(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.length = unit(0, "cm"),
+    text = element_text(size = 8),
+    panel.spacing = unit(-0.15, "lines"),
+    panel.border = element_blank(),
+    plot.margin = margin(c(-1, 0, 0, 0), "cm")
+  )
+
+p_similarity_map_with_studies <- hexa_data %>%
+  filter(!is.na(similarity_raw_with_studies_scaled)) %>% 
+  ggplot() +
+  geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
+  geom_sf(aes(fill = similarity_raw_with_studies_scaled), color = NA) +
   scale_fill_viridis_c(option = "C", na.value = "grey") +
   geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
   annotate(
@@ -3179,9 +3221,27 @@ p_similarity_map <- hexa_data %>%
 ## 8. Plot similarity as bar chart
 ## -----------------------------------------------------------
 
-similarity_by_type <- co_mat %>%
+similarity_by_type_with_studies <- co_mat %>%
   group_by(cluster_name) %>% 
-  summarise(similarity_mean = sum(similarity_sums)/nrow(sim_matrix)) %>% 
+  summarise(similarity_mean = mean(similarity_raw_with_studies_scaled)) %>% 
+  mutate(cluster_name = factor(cluster_name, levels = rev(levels(cluster_name)))) %>%
+  ggplot(aes(x = cluster_name, y = similarity_mean, fill = cluster_name)) +
+  geom_bar(stat = "identity", width = .5, col = "black", size = 0.1) +
+  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  coord_flip() +
+  theme_SM() +
+  theme(
+    legend.title = element_text(),
+    legend.position = "none",
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 0, hjust = .5)
+  ) +
+  labs(x = "", y = "", subtitle = "Similarity to cities with studies")
+similarity_by_type_with_studies
+
+similarity_by_type_all <- co_mat %>%
+  group_by(cluster_name) %>% 
+  summarise(similarity_mean = mean(similarity_raw_all_scaled)) %>% 
   mutate(cluster_name = factor(cluster_name, levels = rev(levels(cluster_name)))) %>%
   ggplot(aes(x = cluster_name, y = similarity_mean, fill = cluster_name)) +
   geom_bar(stat = "identity", width = .5, col = "black", size = 0.1) +
@@ -3195,12 +3255,11 @@ similarity_by_type <- co_mat %>%
     axis.text.x = element_text(angle = 0, hjust = .5)
   ) +
   labs(x = "", y = "", subtitle = "Similarity to all cities")
-similarity_by_type
+similarity_by_type_all
 
 ################################################################################
 # Learning potential on map
 ################################################################################
-
 
 learn_pot <- co_mat %>%
   left_join(ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = c("GHS_urban_area_id" = "ID_UC_G0"))
@@ -3211,7 +3270,7 @@ map_dot_dat <- ghsl %>%
   mutate(geom = st_centroid(geom)) %>%
   left_join(learn_pot %>% select(- GC_UCN_MAI_2025, -GC_CNT_GAD_2025, -geom), by = c("ID_UC_G0" = "GHS_urban_area_id")) %>%
   left_join(n_studies_all_cities, by = c("ID_UC_G0")) %>% 
-  mutate(has_research = !is.na(n_studies))
+  mutate(has_research = n_studies != 0)
 
 p_types_as_dots_with_research <- ggplot() +
   geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
@@ -3267,7 +3326,7 @@ p_types_as_dots_without_research <- ggplot() +
   annotate(
     "label",
     x = -Inf, y = Inf,
-    label = "Cities not covered by any studies",
+    label = "Cities by type not covered by any studies",
     hjust = -0.1, vjust = 1.2,
     size = 3.5,
     fill = "white",
@@ -3295,7 +3354,106 @@ p_types_as_dots_without_research <- ggplot() +
     plot.margin = margin(c(-1, 0, 0, 0), "cm")
   )
 
-# 
+no_research <- map_dot_dat %>%
+  filter(!has_research) %>%
+  st_transform(proj_robin)
+
+#---------------------------------------------------------
+# 5. Assign cities (points or polygons) to grid hexes
+#---------------------------------------------------------
+no_res_hex <- st_join(
+  no_research,
+  world_hex %>% select(hex_id),
+  join = st_within
+)
+
+#---------------------------------------------------------
+# 6. Count number of cities without research, per hex
+#---------------------------------------------------------
+hex_counts <- no_res_hex %>%
+  st_drop_geometry() %>%
+  count(hex_id, name = "n_cities_no_research")
+
+#---------------------------------------------------------
+# 7. Add counts back onto the hex geometry
+#---------------------------------------------------------
+world_hex_with_counts <- world_hex %>%
+  left_join(hex_counts, by = "hex_id") %>%
+  filter(!is.na(n_cities_no_research))
+
+#---------------------------------------------------------
+# 8. (Optional) Plot the hex map
+#---------------------------------------------------------
+library(ggplot2)
+
+breaks_raw <- c(1, 2, 4, 8, 16, 32, 64)
+breaks_log <- log2(breaks_raw)
+
+p_count_without_research <- ggplot() +
+  geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
+  geom_sf(data = world_hex_with_counts, 
+          aes(fill = log2(n_cities_no_research)), color = NA) +
+  scale_fill_gradientn(colors = c("grey", "black"),
+                       breaks = breaks_log,
+                       labels = breaks_raw) +
+  geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
+  annotate(
+    "label",
+    x = -Inf, y = Inf,
+    label = "Count of cities not covered by any studies",
+    hjust = -0.1, vjust = 1.2,
+    size = 3.5,
+    fill = "white",
+    label.size = 0.3
+  ) +
+  theme_SM() +
+  labs(y = "", x = "", fill = "Number of cities without research") +
+  theme(
+    legend.justification = "center",
+    legend.direction = "horizontal",
+    legend.position = c(.5, .1),
+    legend.title = element_text(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.length = unit(0, "cm"),
+    text = element_text(size = 8),
+    panel.spacing = unit(-0.15, "lines"),
+    panel.border = element_blank(),
+    plot.margin = margin(c(-1, 0, 0, 0), "cm")
+  )
+
+################################################################################
+# Combine plots into Figure 2
+################################################################################
+
+fig3bcde <- ggarrange(
+  p_similarity_map_all, p_similarity_map_with_studies,
+  p_types_as_dots_without_research + theme(legend.position = "none"), 
+  p_count_without_research,
+  labels = c("b", "c", "d", "e")
+)
+
+fig3abcde <- ggarrange(
+  p_types_as_dots_with_research,
+  fig3bcde,
+  labels = c("a", ""),
+  ncol = 1,
+  heights = c(1, 1)
+)
+
+fig3fgh <- ggarrange(
+  p_n_studies + theme(text = element_text(size = 9)),
+  similarity_by_type_all + theme(text = element_text(size = 9)),
+  similarity_by_type_with_studies + theme(text = element_text(size = 9)),
+  p_cities_per_cluster_n + theme(text = element_text(size = 9)),
+  align = "h", labels = c("e", "f", "g"),
+  ncol = 1
+)
+
+fig3 <- ggarrange(fig3abcde, fig3fgh, labels = c("", ""), ncol = 2, widths = c(3.2, 1))
+
+ggsave(fig3, file = "plots/fig3.pdf", height = 8, width = 10)
+
 # ################################################################################
 # # Hex grid and maps
 # ################################################################################
@@ -3370,33 +3528,4 @@ p_types_as_dots_without_research <- ggplot() +
 #   )
 
 
-################################################################################
-# Combine plots into Figure 2
-################################################################################
-
-fig3bc <- ggarrange(
-  p_similarity_map,
-  p_types_as_dots_without_research + theme(legend.position = "none"),
-  labels = c("b", "c")
-)
-
-fig3abc <- ggarrange(
-  p_types_as_dots_with_research,
-  fig3bc,
-  labels = c("a", ""),
-  ncol = 1,
-  heights = c(2.2, 1)
-)
-
-fig3def <- ggarrange(
-  p_n_studies + theme(text = element_text(size = 9)),
-  similarity_by_type + theme(text = element_text(size = 9)),
-  p_cities_per_cluster_n + theme(text = element_text(size = 9)),
-  align = "h", labels = c("d", "e", "f"),
-  ncol = 1
-)
-
-fig3 <- ggarrange(fig3abc, fig3def, labels = c("", ""), ncol = 2, widths = c(3.2, 1))
-
-ggsave(fig3, file = "plots/fig3.pdf", height = 6, width = 10)
 

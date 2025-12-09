@@ -1,8 +1,3 @@
-library(tidyverse)
-library(broom)
-library(knitr)
-library(effsize)
-
 # ============================================================================
 # OUTCOME ASSOCIATION VALIDATION FOR CLUSTERING
 # ============================================================================
@@ -13,69 +8,42 @@ library(effsize)
 # optimize for prediction. We're testing construct validity.
 # ============================================================================
 
-### ─────────────────────────────────────────────────────────────
-### 1. Load OUTCOMES
-### ─────────────────────────────────────────────────────────────
+R.version
+# platform       aarch64-apple-darwin20      
+# arch           aarch64                     
+# os             darwin20                    
+# system         aarch64, darwin20           
+# status                                     
+# major          4                           
+# minor          3.2                         
+# year           2023                        
+# month          10                          
+# day            31                          
+# svn rev        85441                       
+# language       R                           
+# version.string R version 4.3.2 (2023-10-31)
+# nickname       Eye Holes  
+rm(list = ls())
 
-health <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/health.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(GHS_hosp_pc = as.numeric(HL_FPC_HOS_2025)) %>% 
-  select(city_id, GHS_hosp_pc)
+setwd("/Users/simon/Documents/repo/cities-learning-dec")
 
-emissions <- read_csv("data/emissions/balance_sheet.csv") %>%
-  filter(Year == 2020) %>% 
-  rename(city_id = ID_UC_G0) %>%
-  mutate(ODIAC = as.numeric(ODIAC)) %>% 
-  select(city_id, ODIAC)
-
-low_ele_zone_pop <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/exposure.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(low_elevation_pop = as.numeric(EX_L10_SHP_2025)) %>% 
-  select(city_id, low_elevation_pop)
-
-low_ele_zone_built <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/exposure.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(low_elevation_built = as.numeric(EX_L10_SHB_2025)) %>% 
-  select(city_id, low_elevation_built)
-
-n_hazards <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/hazards_risks.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(n_hazards = as.numeric(HZ_CEV_THZ_2015)) %>% 
-  select(city_id, n_hazards)
+library(tidyverse)
+library(broom)
+library(knitr)
+library(effsize)
 
 
-floods <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/exposure.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(flood_prone = as.numeric(EX_010_SHP_2025)) %>%
-  select(city_id, flood_prone)
-
-wildfires <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/hazards_risks.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(n_wildfires = as.numeric(HZ_CEV_WLF_2015)) %>%
-  select(city_id, n_wildfires)
-
-warm_days <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/climate.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(n_warm_days = as.numeric(CL_WDS_126_2030)) %>%
-  select(city_id, n_warm_days)
-
-pm2 <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/emissions.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(pm2 = as.numeric(EM_PM2_CON_2020)) %>%
-  select(city_id, pm2)
-
-
-
-
-# n_studies_per_city
 
 ### ─────────────────────────────────────────────────────────────
-### 2. Load COVARIATES
+### 1. Load COVARIATES
 ### ─────────────────────────────────────────────────────────────
 
 ghsl_clean <- arrow::read_parquet(
   "data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included+.parquet"
 )
+
+ghsl <- read_sf("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg") %>% 
+  rename(city_id = ID_UC_G0)
 
 vars <- c(
   "GHS_population", "GHS_population_growth",
@@ -87,11 +55,98 @@ vars <- c(
 covars <- ghsl_clean %>%
   select(city_id = GHS_urban_area_id, all_of(vars))
 
-# Normalize emissions by population
-emissions <- emissions %>%
-  left_join(covars %>% select(city_id, GHS_population), by = "city_id") %>%
-  mutate(emissions_pc = ODIAC / GHS_population) %>%
-  select(city_id, emissions_pc)
+
+### ─────────────────────────────────────────────────────────────
+### 2. Load OUTCOMES
+### ─────────────────────────────────────────────────────────────
+
+
+health <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/health.csv") %>%
+  rename(city_id = ID_UC_G0) %>%
+  mutate(GHS_hosp_pc = as.numeric(HL_FPC_HOS_2025),
+         GHS_hosp = as.numeric(HL_FCL_HOS_2024)) %>% 
+  select(city_id, GHS_hosp_pc, GHS_hosp)
+
+emissions <- read_csv("data/emissions/balance_sheet.csv") %>%
+  filter(Year == 2020) %>% 
+  rename(city_id = ID_UC_G0) %>%
+  mutate(ODIAC = as.numeric(ODIAC)) %>% 
+  left_join(ghsl %>% select(city_id, GC_POP_TOT_2025), by = "city_id") %>% 
+  mutate(ODIAC_pc = as.numeric(ODIAC)/GC_POP_TOT_2025) %>% 
+  select(city_id, ODIAC, ODIAC_pc)
+
+low_ele_zone_pop <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/exposure.csv") %>%
+  rename(city_id = ID_UC_G0) %>%
+  mutate(low_elevation_pop_share = as.numeric(EX_L10_SHP_2025),
+         low_elevation_pop_n = as.numeric(EX_L10_POP_2025)) %>% 
+  select(city_id, low_elevation_pop_share, low_elevation_pop_n)
+
+low_ele_zone_built <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/exposure.csv") %>%
+  rename(city_id = ID_UC_G0) %>%
+  mutate(low_elevation_built_share = as.numeric(EX_L10_SHB_2025),
+         low_elevation_built_n = as.numeric(EX_L10_BUS_2025)) %>% 
+  select(city_id, low_elevation_built_share, low_elevation_built_n)
+
+n_hazards <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/hazards_risks.csv") %>%
+  rename(city_id = ID_UC_G0) %>%
+  mutate(hazards_n = as.numeric(HZ_CEV_THZ_2015)) %>% 
+  mutate(hazards_pc = as.numeric(HZ_CEV_THZ_2015)/GC_POP_TOT_2025) %>% 
+  select(city_id, hazards_n, hazards_pc)
+
+
+floods <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/exposure.csv") %>%
+  rename(city_id = ID_UC_G0) %>%
+  mutate(flood_prone_share = as.numeric(EX_010_SHP_2025),
+         flood_prone_n = as.numeric(EX_100_POP_2025)) %>%
+  select(city_id, flood_prone_share, flood_prone_n)
+
+wildfires <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/hazards_risks.csv") %>%
+  rename(city_id = ID_UC_G0) %>%
+  mutate(wildfires_n = as.numeric(HZ_CEV_WLF_2015)) %>%
+  mutate(wildfires_pc = as.numeric(HZ_CEV_WLF_2015)/GC_POP_TOT_2025) %>% 
+  select(city_id, wildfires_n, wildfires_pc)
+
+warm_days <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/climate.csv") %>%
+  rename(city_id = ID_UC_G0) %>%
+  mutate(n_warm_days_2030 = as.numeric(CL_WDS_126_2030),
+         n_warm_days_2010 = as.numeric(CL_WDS_CUR_2010)) %>%
+  select(city_id, n_warm_days_2030, n_warm_days_2010)
+
+# pm2 <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/emissions.csv") %>%
+#   rename(city_id = ID_UC_G0) %>%
+#   mutate(pm2 = as.numeric(EM_PM2_CON_2020),
+#          pm2_pc = as.numeric(EM_PM2_PEC_2020),
+#          pm2_mortality = as.numeric(EM_PM2_MOR_2020)) %>%
+#   select(city_id, pm2, pm2_mortality)
+
+
+
+#### n studies
+# oa data
+file_names <- list.files(
+  path = "/Users/simon/Documents/repo/cities-learning/data/OpenAlex/05_deduplicated",
+  pattern = "^city_works_df_NA_abstr_added_dedup_\\d+\\.csv$",
+  full.names = TRUE
+)
+df_list <- lapply(file_names, read.csv)
+oa <- do.call(rbind, df_list)
+
+# studies per city
+clean_places <- read.csv("data/geoparser/clean_places_augmented.csv")
+
+clean_places <- clean_places %>% 
+  filter((city_word_match_yes | city_intersects_yes) %in% TRUE) %>%
+  filter(id %in% oa$id) %>% # only deduplicated count
+  mutate(city_id = ifelse(is.na(city_intersection_id), city_word_match_id, city_intersection_id)) %>% 
+  select(id, city_id) %>% 
+  distinct() 
+
+n_studies_per_city <- clean_places %>% 
+  group_by(city_id) %>% 
+  summarise(n_studies = n()) %>% 
+  left_join(ghsl, by = "city_id") %>% 
+  mutate(n_studies_pc = n_studies/GC_POP_TOT_2025)
+
 
 ### ─────────────────────────────────────────────────────────────
 ### 3. Load CLUSTERING LABELS
@@ -144,7 +199,7 @@ df <- emissions %>%
   left_join(n_hazards, by = "city_id") %>%
   left_join(wildfires, by = "city_id") %>%
   left_join(warm_days, by = "city_id") %>%
-  left_join(pm2, by = "city_id") %>%
+  # left_join(pm2, by = "city_id") %>%
   
   left_join(kmeans_simple, by = "city_id") %>%
   left_join(hierarchical, by = "city_id") %>%
@@ -271,16 +326,13 @@ cluster_methods <- c(
 )
 
 outcomes <- c(
-  "emissions_pc",
-  "GHS_hosp_pc",
-  "low_elevation_pop",
-  "low_elevation_built",
-  "flood_prone",
-  "n_hazards",
-  "n_studies", 
-  "n_wildfires",
-  "n_warm_days",
-  "pm2"
+  "GHS_hosp_pc", "GHS_hosp",
+  "ODIAC", "ODIAC_pc",
+  "low_elevation_pop_share", "low_elevation_pop_n",
+  "low_elevation_built_share", "low_elevation_built_n",
+  "flood_prone_share", "flood_prone_n",
+  "wildfires_n", "wildfires_pc",
+  "n_warm_days_2010", "n_warm_days_2030"
 )
 
 # Check which variables actually exist
@@ -428,59 +480,128 @@ cat("\n✓ Saved: data/clustering_results/r_validation_outcome_associations.csv\
 ### VISUALIZATION: EFFECT SIZES BY METHOD
 ### ─────────────────────────────────────────────────────────────
 
-p1 <- association_results %>%
-  mutate(eta_squared = as.numeric(eta_squared)) %>% 
-  mutate(cluster_method  = str_to_title(gsub("_cluster", "", cluster_method)),
-         outcome  = case_when(outcome == "emissions_pc" ~ "Emissions p.c.",
-                              outcome == "n_studies" ~ "Number of case\nstudies",
-                              outcome == "GHS_hosp_pc" ~ "Number of hospitals\np.c.",
-                              outcome == "low_elevation_pop" ~ "% of population\nliving 5-10m elevation",
-                              outcome == "low_elevation_built" ~ "% of built up\narea 5-10m elevation",
-                              outcome == "flood_prone" ~ "% of people exposed to floods",
-                              outcome == "n_wildfires" ~ "Number of wildfires",
-                              outcome == "n_warm_days" ~ "% of days with maximum\ntemperature - projection\nssp 126",
-                              outcome == "pm2" ~ "PM2.5 population weighted\naverage concentrations",
-                              outcome == "n_hazards" ~ "Combined number of hazards"),) %>% 
-  group_by(outcome) %>% 
+outcome_area <- c(
+  # Health
+  GHS_hosp_pc = "Health",
+  GHS_hosp    = "Health",
+  
+  # Emissions
+  ODIAC       = "Emissions",
+  ODIAC_pc    = "Emissions",
+  
+  # Vulnerability
+  low_elevation_pop_share  = "Vulnerability:\ncoastal",
+  low_elevation_pop_n      = "Vulnerability:\ncoastal",
+  low_elevation_built_share = "Vulnerability:\ncoastal",
+  low_elevation_built_n    = "Vulnerability:\ncoastal",
+  flood_prone_share        = "Vulnerability:\nfloods",
+  flood_prone_n            = "Vulnerability:\nfloods",
+  wildfires_n              = "Vulnerability:\nwildfire",
+  wildfires_pc             = "Vulnerability:\nwildfire",
+  n_warm_days_2010         = "Vulnerability:\nheat",
+  n_warm_days_2030         = "Vulnerability:\nheat"
+)
+
+outcome_labels <- c(
+  GHS_hosp_pc = "Hospitals p.c.",
+  GHS_hosp    = "Hospitals",
+  ODIAC       = "ODIAC emissions",
+  ODIAC_pc    = "ODIAC emissions p.c.",
+  low_elevation_pop_share = "% population\nliving 5–10m elev.",
+  low_elevation_pop_n = "Population in\n5–10m elev.",
+  low_elevation_built_share = "% built-up\narea 5–10m elev.",
+  low_elevation_built_n = "Built-up area in\n5–10m elev.",
+  flood_prone_share = "% exposed\nto floods",
+  flood_prone_n = "Population exposed\nto floods",
+  wildfires_n = "Wildfires",
+  wildfires_pc = "Wildfires p.c.",
+  n_warm_days_2010 = "Warm days (%)\n2010",
+  n_warm_days_2030 = "Warm days (%)\n2030"
+)
+
+# Load and register a modern font (e.g., Helvetica Neue)
+showtext_auto()  # Automatically use showtext for fonts
+
+# Check available fonts
+# remotes::install_github("kjhealy/myriad")
+# myriad::import_myriad(font_family = "Myriad Pro", silent = F)
+theme_SM <- function(){
+  theme_light() +   
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(colour = "grey50", fill=NA, linewidth=.5),
+          strip.placement = "outside",
+          text = element_text(size = 12, 
+                              # family = "Myriad Pro"
+          ),
+          axis.text.y = element_text(colour = "grey30"),
+          axis.ticks.length = unit(.2, "cm"),
+          axis.ticks = element_line(colour = "grey50", linewidth=.5),
+          strip.background = element_rect(fill = "white"),
+          strip.text = element_text(colour = "black"),
+          strip.clip = "off",
+          legend.text = element_text(size = 7),
+          legend.key.size = unit(.4, "cm"),
+          legend.position = c(0.9,.05),
+          legend.margin = margin(rep(2, 4)),
+          legend.title = element_blank(),
+          legend.justification = c(1, 0),
+          legend.background = element_rect(fill="white", 
+                                           size=.3, linetype="solid", 
+                                           colour ="grey")
+    )
+}
+
+figA1 <- association_results %>%
+  mutate(
+    eta_squared = as.numeric(eta_squared),
+    cluster_method = str_to_title(gsub("_cluster", "", cluster_method)),
+    cluster_method = ifelse(cluster_method == "Dec", "Deep Embedded Clustering (DEC)", cluster_method),
+    
+    # assign labels & area category
+    outcome_label = outcome_labels[outcome],
+    outcome_type = outcome_area[outcome],
+    
+    # enforce plotting order using the original outcomes vector
+    outcome_label = factor(outcome_label, levels = outcome_labels[outcomes]),
+    
+    # optional: area ordering
+    outcome_type = factor(outcome_type, levels = c("Emissions", 
+                                                   "Vulnerability:\ncoastal", "Vulnerability:\nfloods",
+                                                   "Vulnerability:\nwildfire", "Vulnerability:\nheat",
+                                                   "Health"))
+  ) %>% 
+  group_by(outcome_label) %>% 
   mutate(mean_eta = mean(eta_squared)) %>% 
-  ggplot(aes(x = forcats::fct_reorder(outcome, mean_eta), 
+  ggplot(aes(x = forcats::fct_reorder(outcome_label, mean_eta), 
              y = eta_squared, 
              col = cluster_method, 
              shape = cluster_method
              )) +
-  geom_point(position = position_dodge(width = -.4), size = 2, alpha = .5) +
-  # geom_hline(yintercept = c(0.06, 0.14), linetype = "dashed", alpha = 0.5) +
+  geom_point(position = position_dodge(width = .7), size = 2.5, alpha = .7) +
   coord_flip() +
   scale_color_aaas() +
-  # scale_fill_manual(
-  #   values = c("Strong" = "#2ecc71", "Medium" = "#f39c12", "Weak" = "#e74c3c")
-  # ) +
-  # facet_wrap(~outcome) + 
+  facet_grid(outcome_type~., scales = "free_y", space = "free") +
   labs(
     title = "Validation of typology: cluster-outcome associations",
-    # subtitle = "η² values across all outcomes",
-    x = "Clustering Method",
+    x = "Outcome",
     y = "Percentage of variation accounted for (η²)",
   ) +
   theme_SM() +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
     plot.title = element_text(face = "bold", size = 14),
-    legend.position = "bottom"
+    legend.position = "bottom", 
+    strip.text.y.right = element_text(angle = 0)
   )
 
-p1
+figA1
 
-ggsave("plots/r_validation_effect_sizes.pdf", 
-       p1, width = 10, height = 6)
-cat("✓ Saved: data/clustering_results/r_validation_effect_sizes.png\n")
+ggsave("plots/figA1.pdf", figA1, width = 10, height = 7)
 
 
 ### ─────────────────────────────────────────────────────────────
 ### FINAL SUMMARY
 ### ─────────────────────────────────────────────────────────────
 
-cat("\n")
 cat("VALIDATION COMPLETE\n")
 cat("Key findings:\n")
 
@@ -514,10 +635,3 @@ if ("kmeans simple" %in% association_results$cluster_method &&
   cat(sprintf("  • DEC improves over k-means by %.1f%% on average\n", avg_overall_improvement))
 }
 
-cat("\nInterpretation:\n")
-cat("  These associations validate that clusters capture substantive urban\n")
-cat("  characteristics relevant to sustainability outcomes. Higher effect sizes\n")
-cat("  indicate clusters differentiate cities on important dimensions.\n\n")
-
-cat("  NOTE: This is construct validation, not predictive validation.\n")
-cat("  Unsupervised learning doesn't optimize for prediction.\n")
