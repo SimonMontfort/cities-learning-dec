@@ -1,13 +1,3 @@
-# ============================================================================
-# OUTCOME ASSOCIATION VALIDATION FOR CLUSTERING
-# ============================================================================
-# This script tests whether clustering methods capture substantive urban
-# characteristics by examining associations with theoretically-relevant outcomes.
-# 
-# NOTE: This is NOT predictive validation - unsupervised learning doesn't 
-# optimize for prediction. We're testing construct validity.
-# ============================================================================
-
 R.version
 # platform       aarch64-apple-darwin20      
 # arch           aarch64                     
@@ -31,8 +21,6 @@ library(tidyverse)
 library(broom)
 library(knitr)
 library(effsize)
-
-
 
 ### ─────────────────────────────────────────────────────────────
 ### 1. Load COVARIATES
@@ -175,9 +163,9 @@ get_cluster_labels <- function(data, run_id, method_name) {
 }
 
 # Get labels for all methods
-kmeans_simple <- get_cluster_labels(raw_clusters, 0, "kmeans simple")
-hierarchical <- get_cluster_labels(raw_clusters, 0, "hierarchical simple")
-kmeans_embedded <- get_cluster_labels(raw_clusters, 0, "kmeans embedded")
+kmeans_simple <- get_cluster_labels(raw_clusters, 5, "kmeans simple")
+hierarchical <- get_cluster_labels(raw_clusters, 5, "hierarchical simple")
+kmeans_embedded <- get_cluster_labels(raw_clusters, 5, "kmeans embedded")
 
 # DEC consensus clusters
 dec <- read_csv("data/clustering_results/dec_clusters_k4.csv") %>%
@@ -476,6 +464,46 @@ for (baseline in baseline_methods) {
 write_csv(association_results, "data/clustering_results/r_validation_outcome_associations.csv")
 cat("\n✓ Saved: data/clustering_results/r_validation_outcome_associations.csv\n")
 
+
+### ─────────────────────────────────────────────────────────────
+### SUMMARY
+### ─────────────────────────────────────────────────────────────
+
+cat("VALIDATION COMPLETE\n")
+cat("Key findings:\n")
+
+# Which method performs best on average?
+best_method <- avg_effects %>% slice(1) %>% pull(cluster_method)
+best_eta <- avg_effects %>% slice(1) %>% pull(mean_eta_squared)
+
+cat(sprintf("  • Best performing method: %s (mean η² = %.3f)\n", best_method, best_eta))
+
+# How many outcomes show strong associations?
+n_strong_dec <- association_results %>% 
+  filter(cluster_method == "dec", interpretation == "Strong") %>% 
+  nrow()
+
+cat(sprintf("  • DEC shows strong associations for %d/%d outcomes\n", 
+            n_strong_dec, length(available_outcomes)))
+
+  
+compare_perf <- function(method){
+  
+  method_sym <- sym(method)
+  
+  overall_comparison <- association_results %>%
+    filter(cluster_method %in% c(method, "dec")) %>%
+    select(outcome, cluster_method, eta_squared) %>%
+    pivot_wider(names_from = cluster_method, values_from = eta_squared) %>%
+    mutate(across(c(!!method_sym, dec), as.numeric)) %>%
+    mutate(improvement = dec /!!method_sym)
+  
+  mean(overall_comparison$improvement, na.rm = TRUE)
+}
+
+
+
+
 ### ─────────────────────────────────────────────────────────────
 ### VISUALIZATION: EFFECT SIZES BY METHOD
 ### ─────────────────────────────────────────────────────────────
@@ -582,7 +610,11 @@ figA1 <- association_results %>%
   scale_color_aaas() +
   facet_grid(outcome_type~., scales = "free_y", space = "free") +
   labs(
-    title = "Validation of typology: cluster-outcome associations",
+    # title = "Validation of typology: cluster-outcome associations",
+    subtitle = paste0("DEC variation accounted for in emission, vulnerability, and health outcomes is on average ", 
+                      round(compare_perf("kmeans simple"), 0), ", ", 
+                      round(compare_perf("hierarchical simple"), 0), ", ", 
+                      round(compare_perf("kmeans embedded"), 0), " times\nas large as for kmeans simple, hierarchical clustering, and k-means on embeddedings, respectively"),
     x = "Outcome",
     y = "Percentage of variation accounted for (η²)",
   ) +
@@ -595,43 +627,4 @@ figA1 <- association_results %>%
 
 figA1
 
-ggsave("plots/figA1.pdf", figA1, width = 10, height = 7)
-
-
-### ─────────────────────────────────────────────────────────────
-### FINAL SUMMARY
-### ─────────────────────────────────────────────────────────────
-
-cat("VALIDATION COMPLETE\n")
-cat("Key findings:\n")
-
-# Which method performs best on average?
-best_method <- avg_effects %>% slice(1) %>% pull(cluster_method)
-best_eta <- avg_effects %>% slice(1) %>% pull(mean_eta_squared)
-
-cat(sprintf("  • Best performing method: %s (mean η² = %.3f)\n", best_method, best_eta))
-
-# How many outcomes show strong associations?
-n_strong_dec <- association_results %>% 
-  filter(cluster_method == "dec", interpretation == "Strong") %>% 
-  nrow()
-
-cat(sprintf("  • DEC shows strong associations for %d/%d outcomes\n", 
-            n_strong_dec, length(available_outcomes)))
-
-# Overall improvement
-if ("kmeans simple" %in% association_results$cluster_method && 
-    "dec" %in% association_results$cluster_method) {
-  
-  overall_comparison <- association_results %>%
-    filter(cluster_method %in% c("kmeans simple", "dec")) %>%
-    select(outcome, cluster_method, eta_squared) %>%
-    pivot_wider(names_from = cluster_method, values_from = eta_squared) %>%
-    mutate_at(c("kmeans simple", "dec"), as.numeric) %>% 
-    mutate(improvement = (dec - `kmeans simple`) / `kmeans simple` * 100)
-  
-  avg_overall_improvement <- mean(overall_comparison$improvement, na.rm = TRUE)
-  
-  cat(sprintf("  • DEC improves over k-means by %.1f%% on average\n", avg_overall_improvement))
-}
-
+ggsave("plots/figA1.pdf", figA1, width = 10, height = 8)

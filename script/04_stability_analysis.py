@@ -118,7 +118,7 @@ if __name__ == "__main__":
     os.chdir("/Users/simon/Documents/repo/cities-learning-DEC")
 
     cluster_range = range(4,5)
-    n_runs = 30
+    n_runs = 50
     n_permutations = 100
 
     raw_clustering_scores = pd.read_csv("data/clustering_results/raw_clustering_scores.csv")

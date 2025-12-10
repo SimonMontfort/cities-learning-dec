@@ -146,8 +146,16 @@ p_clustering_performance_agg <- all_data %>%
   scale_y_continuous(breaks = scales::pretty_breaks()) +
   facet_grid(metric ~ method, scales = "free_y") +
   labs(x = "Number of clusters", y = "Score") +
-  theme(legend.position = c(.9,.5), 
-        legend.title = element_blank())
+  theme(legend.position = c(.08,.78), 
+        legend.title = element_blank(),
+        legend.justification = "left",
+        legend.box.just = "left", 
+        legend.box.background = element_rect(color = "grey", size = 0.2),
+        legend.box.margin = margin(rep(2, 4)),
+        legend.background = element_blank(),
+        legend.spacing.y = unit(0.01, "lines"),
+        legend.box = "vertical",
+        legend.direction = "vertical")
 
 
 ####################
@@ -205,16 +213,24 @@ p_stability <- stab %>%
   scale_y_continuous(breaks = scales::pretty_breaks()) +
   facet_grid(. ~ method) +
   labs(x = "Ensemble size\n(number of models)", y = "Adjusted Rand Index") +
-  theme(legend.position = c(.9,.4), 
+  theme(legend.position = c(.95,.2), 
         legend.title = element_blank(), 
-        plot.margin = unit(c(.5,.73,0,.73), "cm"))
+        plot.margin = unit(c(.5,.73,0,.73), "cm"),
+        legend.justification = "right",
+        legend.box.just = "right", 
+        legend.box.background = element_rect(color = "grey", size = 0.2),
+        legend.box.margin = margin(rep(2, 4)),
+        legend.background = element_blank(),
+        legend.spacing.y = unit(0.01, "lines"),
+        legend.box = "vertical",
+        legend.direction = "vertical")
 p_stability
 
 ####################
 # export results
 ####################
 
-p_clust_perf_and_stabil <- ggarrange(p_clustering_performance_agg, p_stability, heights = c(3, 2), ncol = 1, align = "v", labels = c("a", "b"))
+figA2 <- ggarrange(p_clustering_performance_agg, p_stability, heights = c(3, 2), ncol = 1, align = "v", labels = c("a", "b"))
 
-ggsave(p_clust_perf_and_stabil, file = "plots/figA1.pdf", height = 10, width = 10)
+ggsave(figA2, file = "plots/figA2.pdf", height = 10, width = 10)
 

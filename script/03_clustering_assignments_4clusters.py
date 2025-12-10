@@ -202,7 +202,7 @@ if __name__ == "__main__":
     ghs_ids = cities_clean_scaled_df["GHS_urban_area_id"].values
     performance_scores = pd.read_csv("data/clustering_results/raw_clustering_scores.csv")
 
-    cluster_range = range(4,5)
+    cluster_range = range(3,12)
 
     for n_clusters in cluster_range:
         df_final = summarize_clustering_results(performance_scores, ghs_ids, n_clusters, dir="data/clustering_results")

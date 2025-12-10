@@ -1382,7 +1382,7 @@ p_stability <- ggplot(boot_df, aes(boot_vals)) +
   theme_SM()
 p_stability
 
-figA3 <- ggarrange(p_assign_probs, p_share_mixed, p_co_assignment_prob, p_stability, labels = "auto", align = "hv")
+figA3 <- ggarrange(p_assign_probs, p_share_mixed, p_stability, p_co_assignment_prob, labels = "auto", align = "hv")
 figA3
 ggsave(figA3, file = "plots/figA3.pdf", height = 10, width = 10)
 
@@ -1480,7 +1480,7 @@ fig2_reg <- df3 %>%
   geom_col(aes(x = diff, fill = cluster_name), col = "black", size = .2) + 
   geom_vline(xintercept = 0, lty = 1, col = "grey30") + 
   geom_text(aes(hjust = ifelse(diff > 0, 1, 0),
-                x = ifelse(diff > 0, -1, 1),
+                x = ifelse(diff > 0, -3, 3),
                 label = sapply(name_combined, function(x) gsub("infrastructure", "infrastruct-\nure", gsub(" ", "\n", sub(".*___", "", x))))),
             lineheight= .7, size = 2.5) +
   facet_nested(
@@ -1489,7 +1489,12 @@ fig2_reg <- df3 %>%
     scales = "free_y",
     independent = "y", switch = "y"
   ) +
-  scale_fill_manual(values = rev(c("grey", "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  scale_fill_manual(values = c(
+    "Type 1" = "#E41A1C",
+    "Type 2" = "#377EB8",
+    "Type 3" = "#4DAF4A",
+    "Type 4" = "#984EA3", 
+    "mixed" = "grey")) +
   labs(
     x = "",
     y = "",
@@ -1530,7 +1535,7 @@ fig2_type <- df4 %>%
   geom_col(aes(x = diff, fill = cluster_name), col = "black", size = .2) + 
   geom_vline(xintercept = 0, lty = 1, col = "grey30") + 
   geom_text(aes(hjust = ifelse(diff > 0, 1, 0),
-                x = ifelse(diff > 0, -1, 1),
+                x = ifelse(diff > 0, -3, 3),
                 label = sapply(name_combined, function(x) gsub(" ", "\n", sub(".*___", "", x)))),
             lineheight= .7, size = 2.5) +
   facet_nested(
@@ -1539,7 +1544,12 @@ fig2_type <- df4 %>%
     scales = "free_y",
     independent = "y", switch = "y"
   ) +
-  scale_fill_manual(values = rev(c("grey", "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  scale_fill_manual(values = c(
+    "Type 1" = "#E41A1C",
+    "Type 2" = "#377EB8",
+    "Type 3" = "#4DAF4A",
+    "Type 4" = "#984EA3", 
+    "mixed" = "grey")) +
   labs(
     x = "",
     y = "",
@@ -1884,7 +1894,7 @@ ggsave(test_region_asia, file = "plots/test_region_asia.pdf", width = 20, height
 
 clust_probs %>% 
   left_join(ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  filter(GC_UCN_MAI_2025 %in% c("Paris", "London", "Berlin", "Basel", "Mombasa", "Victoria", "Pretoria")) %>% 
+  filter(GC_UCN_MAI_2025 %in% c("Paris", "London", "Berlin", "Basel", "Mombasa", "Victoria", "Pretoria", "Durban")) %>% 
   select(GC_UCN_MAI_2025, GC_CNT_GAD_2025, mean_prob, cluster_name, secondary_cluster_name) %>% 
   arrange(GC_UCN_MAI_2025, -mean_prob) %>% as.data.frame()
 
@@ -2019,39 +2029,6 @@ p_box_characteristics <- box_plot_add_covs_dat %>%
   guides(fill=guide_legend(ncol=2))
 p_box_characteristics
 ggsave(p_box_characteristics, file = "plots/p_box_characteristics.pdf", height = 7, width = 10)
-
-# ###############################################################################
-# # mean probs across Regions: TODO - move to ucertainty script
-# ################################################################################
-# 
-# # Summarize count per Region and cluster_name
-# count_df <- desc_geo %>%
-#   as.data.frame() %>%
-#   group_by(Region, cluster_name) %>%
-#   summarise(n = n(), .groups = "drop")
-# 
-# # Plot with annotation
-# p_mean_prob_cont <- desc_geo %>%
-#   as.data.frame() %>%
-#   ggplot(aes(x = Region, y = mean_prob, group = Region)) +
-#   geom_boxplot(outlier.size = 0.5) +
-#   facet_wrap(~cluster_name) +
-#   geom_text(
-#     data = count_df,
-#     aes(x = Region, y = 0.95, label = paste0("n = ", n)),
-#     inherit.aes = FALSE,
-#     size = 3
-#   ) +
-#   labs(
-#     title = "Mean probability by Region and Cluster",
-#     x = "Region",
-#     y = "Probability distribution"
-#   ) +
-#   ylim(c(0.25, 1)) + 
-#   theme_SM() +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-# 
-# ggsave(p_mean_prob_cont, file = "plots/p_mean_prob_cont.pdf", width = 10, height = 6)
 
 ##################################################################
 # examples
@@ -2951,7 +2928,7 @@ p_n_studies <- clust %>%
     axis.title = element_blank(),
     axis.text.x = element_text(angle = 0, hjust = .5)
   ) +
-  labs(x = "", y = "", subtitle = "Total number of studies")
+  labs(x = "", y = "", subtitle = "Total number of cases studied")
 
 
 # ################################################################################
@@ -3446,7 +3423,7 @@ fig3fgh <- ggarrange(
   similarity_by_type_all + theme(text = element_text(size = 9)),
   similarity_by_type_with_studies + theme(text = element_text(size = 9)),
   p_cities_per_cluster_n + theme(text = element_text(size = 9)),
-  align = "h", labels = c("e", "f", "g"),
+  align = "h", labels = c("e", "f", "g", "h"),
   ncol = 1
 )
 
