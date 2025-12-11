@@ -271,43 +271,13 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
     random.seed(seed_run)
     tf.random.set_seed(seed_run)
 
-    '''
-    # best params
-    autoencoder = build_autoencoder_fixed(
-        encoding_dim=4,    # best values
-        l2_reg=6.770866604848463e-05,      # best values
-        units1=96,         # best values
-        units2=32          # best values
-    )
-
-    '''
-    '''
-    # Use fixed architecture (FAST!) high country and regional segregation
+    # Use fixed architecture (FAST!)
     autoencoder = build_autoencoder_fixed(
         encoding_dim=4,    # best values
         l2_reg=5.086267866771555e-06,      # best values
         units1=80,         # best values
         units2=16          # best values
     )
-    '''
-
-    # Use fixed architecture (FAST!) experiment
-    autoencoder = build_autoencoder_fixed(
-        encoding_dim=4,    # best values
-        l2_reg=5.086267866771555e-06,      # best values
-        units1=80,         # best values
-        units2=16          # best values
-    )
-
-    '''
-    # separation of mega cities
-    autoencoder = build_autoencoder_fixed(
-        encoding_dim=4,    # best values
-        l2_reg=6.086267866771555e-06,      # best values
-        units1=80,         # best values
-        units2=16          # best values
-    )
-    '''
 
     # Train with early stopping
     autoencoder.fit(
@@ -512,85 +482,81 @@ def run_dec_clustering(encoder_model, n_clusters, initial_centers, run_id):
     return final_labels, scores
 
 
-def train_run(run_id, n_clusters, cities_clean_scaled, encoder_model=None, embeddings=None):
-    # Clear session at start if this is a fresh run
-    if encoder_model is None:
-        K.clear_session()
-        gc.collect()
+def train_run(run_id, n_clusters, cities_clean_scaled):
 
-    # Train autoencoder only if not provided (i.e., first n_clusters for this run_id)
-    if encoder_model is None:
-        encoder_model = train_autoencoder(run_id)
-    
-    # Get embeddings only if not provided
-    if embeddings is None:
-        embeddings = get_embeddings(encoder_model, run_id)
+    # FULL RESET for each (run_id, k)
+    K.clear_session()
+    gc.collect()
+
+    # Train AE fresh for each k
+    encoder_model = train_autoencoder(run_id)
+
+    # Compute embeddings fresh for each k
+    embeddings = get_embeddings(encoder_model, run_id)
 
     # Simple K-Means
-    kmeans_labels, kmeans_centers, kmeans_scores = run_kmeans_clustering(cities_clean_scaled, n_clusters, run_id, seed)
+    kmeans_labels, kmeans_centers, kmeans_scores = run_kmeans_clustering(
+        cities_clean_scaled, n_clusters, run_id, seed
+    )
 
-    # Simple Hierarchical Clustering
-    hierarchical_labels, hierarchical_scores = run_hierarchical_clustering(cities_clean_scaled, n_clusters)
+    # Hierarchical
+    hierarchical_labels, hierarchical_scores = run_hierarchical_clustering(
+        cities_clean_scaled, n_clusters
+    )
 
-    # Embedded KMeans
-    kmeans_emb_labels, kmeans_emb_centers, kmeans_emb_scores = run_kmeans_clustering(embeddings, n_clusters, run_id, seed)
+    # Embedded K-Means
+    kmeans_emb_labels, kmeans_emb_centers, kmeans_emb_scores = run_kmeans_clustering(
+        embeddings, n_clusters, run_id, seed
+    )
 
     # DEC
-    dec_labels, dec_scores = run_dec_clustering(encoder_model, n_clusters, kmeans_emb_centers, run_id)
+    dec_labels, dec_scores = run_dec_clustering(
+        encoder_model, n_clusters, kmeans_emb_centers, run_id
+    )
 
-    result = {
-        'run_id': run_id,
-        'n_clusters': n_clusters,
-        'kmeans simple': {
-            'labels': kmeans_labels,
-            'scores': kmeans_scores
+    # IMPORTANT: return ONLY a dictionary, nothing else
+    return {
+        "run_id": run_id,
+        "n_clusters": n_clusters,
+        "kmeans simple": {
+            "labels": kmeans_labels,
+            "scores": kmeans_scores,
         },
-        'hierarchical simple': {
-            'labels': hierarchical_labels,
-            'scores': hierarchical_scores
+        "hierarchical simple": {
+            "labels": hierarchical_labels,
+            "scores": hierarchical_scores,
         },
-        'kmeans embedded': {
-            'labels': kmeans_emb_labels,
-            'scores': kmeans_emb_scores
+        "kmeans embedded": {
+            "labels": kmeans_emb_labels,
+            "scores": kmeans_emb_scores,
         },
-        'dec': {
-            'labels': dec_labels,
-            'scores': dec_scores
-        }
+        "dec": {
+            "labels": dec_labels,
+            "scores": dec_scores,
+        },
     }
-    
-    # Clean up intermediate objects but keep encoder_model and embeddings for reuse
-    del kmeans_labels, kmeans_centers
-    del hierarchical_labels
-    del kmeans_emb_labels, kmeans_emb_centers
-    del dec_labels
-    gc.collect()
-    
-    return result, encoder_model, embeddings
+
+
 
 
 def run_experiments(cluster_range, n_runs):
     all_results = []
 
-    # Loop over run_id first (not n_clusters) to reuse encoder and embeddings
     for run_id in range(n_runs):
         print(f"\n===== Processing run_id {run_id} =====")
-        
-        encoder_model = None
-        embeddings = None
-        
+
         for n_clusters in cluster_range:
             print(f"  Clustering with {n_clusters} clusters")
-            
-            result, encoder_model, embeddings = train_run(run_id, n_clusters, cities_clean_scaled, encoder_model, embeddings)
+
+            # IMPORTANT: train_run receives NO encoder_model or embeddings
+            result = train_run(run_id, n_clusters, cities_clean_scaled)
+
             all_results.append(result)
 
             print(f"  KMeans silhouette: {result['kmeans embedded']['scores']['silhouette']:.4f}")
             print(f"  DEC silhouette: {result['dec']['scores']['silhouette']:.4f}")
-        
-        # Clean up encoder and embeddings after all n_clusters for this run_id
-        del encoder_model
-        del embeddings
+
+        # Clear TF session after all k for this run_id
         K.clear_session()
         gc.collect()
 
@@ -630,7 +596,7 @@ def flatten_performance_scores(results):
 
 
 if __name__ == '__main__':
-    cluster_range = range(3,12)
+    cluster_range = [4, 3, 5, 6, 7, 8, 9, 10, 11]
     n_runs = 50
 
     performance_scores = run_experiments(cluster_range, n_runs)
