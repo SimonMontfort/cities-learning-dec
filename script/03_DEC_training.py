@@ -271,7 +271,7 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
     random.seed(seed_run)
     tf.random.set_seed(seed_run)
 
-    # Use fixed architecture (FAST!)
+    # Use fixed architecture, best-performing parameters inserted
     autoencoder = build_autoencoder_fixed(
         encoding_dim=4,    # best values
         l2_reg=5.086267866771555e-06,      # best values

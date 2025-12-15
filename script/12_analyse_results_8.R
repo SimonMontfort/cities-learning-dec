@@ -88,7 +88,7 @@ ipcc_regions_hexa_lablelines <- st_read('data/IPCC-WGI-reference-regions-v4_shap
 ipcc_regions_hexa <- st_read('data/IPCC-WGI-reference-regions-v4_shapefile/zones.gpkg')
 ipcc_regions_hexa_split <- st_read("data/IPCC-WGI-reference-regions-v4_shapefile/zones_hexagons_split_triangles.gpkg")
 
-cites_ipcc_regions <- read.csv("data/IPCC-WGII-continental-regions_shapefile/cities_ids_with_ipcc_regions.csv")
+cities_ipcc_regions <- read.csv("data/IPCC-WGII-continental-regions_shapefile/cities_ids_with_ipcc_regions.csv")
 
 
 ################################################################################
@@ -285,7 +285,7 @@ clust <- clust %>%
   select(GHS_urban_area_id, consensus_label_majority, 
          co_vars, similarity, mean_prob, entropy
   ) %>% 
-  left_join(cites_ipcc_regions, by= c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  left_join(cities_ipcc_regions, by= c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(n_studies_per_city, by = c("GHS_urban_area_id" = "city_id")) %>% 
   left_join(cluster_names, by = "consensus_label_majority") %>% 
   mutate(n_studies = ifelse(is.na(n_studies), 0, n_studies))
@@ -719,7 +719,7 @@ p_emissions_box <- ggplot(emmissions_box_dat, aes(x = cluster_name, y = odiac_no
     x = "",
     y = "Emissions p.c. (t CO₂ p.a.)"
   ) +
-  facet_wrap(~Region, nrow = 1) +
+  # facet_wrap(~Region, nrow = 1) +
   theme_SM() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "none")
@@ -959,194 +959,6 @@ ggsave(fig1_old, filename = "plots/fig1_old.pdf", width = 10, height = 10)
 # ggsave(box_plot_list[[3]], filename = "plots/type_3.pdf", width = 5, height = 3.8)
 # ggsave(box_plot_list[[4]], filename = "plots/type_4.pdf", width = 5, height = 3.8)
 
-# select_top_vars <- function(clust_scaled, co_vars, n, rank_logic = c("rank1","rank2","rank3")) {
-#   library(dplyr)
-#   library(tidyr)
-#   
-#   rank_logic <- match.arg(rank_logic)
-#   
-#   # 1. Compute medians ----
-#   type_meds <- clust_scaled %>%
-#     group_by(cluster_name) %>%
-#     summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
-#     pivot_longer(cols = all_of(co_vars), names_to = "var", values_to = "type_med")
-#   
-#   region_meds <- clust_scaled %>%
-#     group_by(Region) %>%
-#     summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
-#     pivot_longer(cols = all_of(co_vars), names_to = "var", values_to = "reg_med")
-#   
-#   type_region_meds <- clust_scaled %>%
-#     group_by(cluster_name, Region) %>%
-#     summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
-#     pivot_longer(cols = all_of(co_vars), names_to = "var", values_to = "reg_type_med")
-#   
-#   # 2. Add diffs + absolute ranks ----
-#   df <- type_region_meds %>%
-#     left_join(type_meds,  by = c("cluster_name", "var")) %>%
-#     left_join(region_meds, by = c("Region", "var")) %>%
-#     mutate(
-#       diff1 = reg_type_med,
-#       diff2 = reg_type_med - reg_med,
-#       diff3 = reg_type_med - type_med,
-#       
-#       rank1 = abs(diff1),
-#       rank2 = abs(diff2),
-#       rank3 = abs(diff3)
-#     )
-#   
-#   # 3. Select top n PER RANK LOGIC independently ----
-#   df1 <- df %>%
-#     group_by(cluster_name, Region) %>%
-#     arrange(desc(.data[[rank_logic]])) %>%
-#     slice_head(n = n/2) %>%
-#     ungroup() %>% 
-#     mutate(head_tail = "head")
-#   
-#   df2 <- df %>%
-#     group_by(cluster_name, Region) %>%
-#     arrange(desc(.data[[rank_logic]])) %>%
-#     slice_tail(n = n/2) %>%
-#     ungroup() %>% 
-#     mutate(head_tail = "tail")
-#   
-#   rbind(df1, df2)
-# }
-# 
-# plot_rank_logic_for_type <- function(df_top, type_name, logic, lims, theme_SM) {
-#   library(dplyr)
-#   library(ggplot2)
-#   library(forcats)
-#   
-#   df <- df_top %>%
-#     filter(cluster_name == type_name) %>%
-#     rename_co_vars("var") %>%
-#     mutate(
-#       diff = .data[[logic]],
-#       name_combined = paste(Region, var, sep = "___"),
-#       name_combined = fct_reorder(name_combined, diff)
-#     )
-#   
-#   ggplot(df, aes(x = diff, y = name_combined)) +
-#     geom_col(aes(fill = cluster_name), color = "black", size = .2) +
-#     geom_vline(xintercept = 0, color = "grey30") +
-#     geom_text(
-#       aes(
-#         hjust = ifelse(diff > 0, 1, 0),
-#         x = ifelse(diff > 0, -0.5, 0.5),
-#         label = var
-#       ),
-#       size = 2.7, lineheight = .8
-#     ) +
-#     facet_wrap(~Region, scales = "free_y", nrow = 1) +
-#     scale_fill_manual(values = rev(c(
-#       "Type 1" = "#E41A1C",
-#       "Type 2" = "#377EB8",
-#       "Type 3" = "#4DAF4A",
-#       "Type 4" = "#984EA3"
-#     ))) +
-#     xlim(lims) +
-#     theme_SM() +
-#     theme(
-#       axis.ticks = element_blank(),
-#       axis.text.y = element_blank(),
-#       axis.title = element_blank(),
-#       title = element_blank(),
-#       legend.position = "none",
-#       plot.margin = margin(c(-1,-2,-1,-2), "cm"),
-#       axis.text.x = element_text(angle = 0, hjust = .5)
-#     )
-# }
-# 
-# top_rank1 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank1")
-# top_rank1 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank1")
-# top_rank1 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank1")
-# 
-# 
-# top_rank1 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank1")
-# p1_t1 <- plot_rank_logic_for_type(top_rank1, "Type 1", "diff1", lims = c(0,100), theme_SM)  + 
-#   geom_text(
-#     aes(
-#       hjust = 0,
-#       x = ifelse(head_tail == "head", 1, diff1),
-#       label = var,
-#       col = head_tail
-#     ), 
-#     size = 2.7, lineheight = .8
-#   ) + scale_color_manual(values = c("white", "black"))
-# 
-# top_rank2 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank2")
-# p2_t1 <- plot_rank_logic_for_type(top_rank2, "Type 1", "diff2", lims = c(-50,50), theme_SM)
-# 
-# top_rank3 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank3")
-# p3_t1 <- plot_rank_logic_for_type(top_rank3, "Type 1", "diff3", lims = c(-50,50), theme_SM)
-# 
-# 
-# top_rank1 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank1")
-# p1_t2 <- plot_rank_logic_for_type(top_rank1, "Type 2", "diff1", lims = c(0,100), theme_SM)  + 
-#   geom_text(
-#     aes(
-#       hjust = 0,
-#       x = ifelse(head_tail == "head", 1, diff1),
-#       label = var,
-#       col = head_tail
-#     ), 
-#     size = 2.7, lineheight = .8
-#   ) + scale_color_manual(values = c("white", "black"))
-# 
-# top_rank2 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank2")
-# p2_t2 <- plot_rank_logic_for_type(top_rank2, "Type 2", "diff2", lims = c(-50,50), theme_SM)
-# 
-# top_rank3 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank3")
-# p3_t2 <- plot_rank_logic_for_type(top_rank3, "Type 2", "diff3", lims = c(-50,50), theme_SM)
-# 
-# 
-# top_rank1 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank1")
-# p1_t3 <- plot_rank_logic_for_type(top_rank1, "Type 3", "diff1", lims = c(0,100), theme_SM)  + 
-#   geom_text(
-#     aes(
-#       hjust = 0,
-#       x = ifelse(head_tail == "head", 1, diff1),
-#       label = var,
-#       col = head_tail
-#     ), 
-#     size = 2.7, lineheight = .8
-#   ) + scale_color_manual(values = c("white", "black"))
-# 
-# top_rank2 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank2")
-# p2_t3 <- plot_rank_logic_for_type(top_rank2, "Type 3", "diff2", lims = c(-50,50), theme_SM)
-# 
-# top_rank3 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank3")
-# p3_t3 <- plot_rank_logic_for_type(top_rank3, "Type 3", "diff3", lims = c(-50,50), theme_SM)
-# 
-# 
-# top_rank1 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank1")
-# p1_t4 <- plot_rank_logic_for_type(top_rank1, "Type 4", "diff1", lims = c(0,100), theme_SM)  + 
-#   geom_text(
-#     aes(
-#       hjust = 0,
-#       x = ifelse(head_tail == "head", 1, diff1),
-#       label = var,
-#       col = head_tail
-#     ), 
-#     size = 2.7, lineheight = .8
-#   ) + scale_color_manual(values = c("white", "black"))
-# 
-# top_rank2 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank2")
-# p2_t4 <- plot_rank_logic_for_type(top_rank2, "Type 4", "diff2", lims = c(-50,50), theme_SM)
-# 
-# top_rank3 <- select_top_vars(clust_scaled, co_vars, n = 4, rank_logic = "rank3")
-# p3_t4 <- plot_rank_logic_for_type(top_rank3, "Type 4", "diff3", lims = c(-50,50), theme_SM)
-# 
-# ggarrange(p1_t1, p2_t1, p3_t1,
-#           p1_t2, p2_t2, p3_t2,
-#           p1_t3, p2_t3, p3_t3,
-#           p1_t4, p2_t4, p3_t4, ncol = 1)
-# 
-# ggarrange(p2_t1,
-#           p2_t2,
-#           p2_t3,
-#           p2_t4, ncol = 1)
 
 ################################################################################
 # mixed type assignment
@@ -1159,6 +971,12 @@ desc_geo_exlc <- desc_geo %>%
     main_mixed = ifelse(mean_prob < .65*median(mean_prob), "mixed", "main type"),
   )
 table(desc_geo_exlc$cluster_name, desc_geo_exlc$main_mixed)
+
+
+write.csv(as.data.frame(desc_geo_exlc) %>% 
+            select(ID_UC_G0, GC_UCN_MAI_2025, cluster_name, main_mixed),
+          "data/clustering_results/type_main_mixed.csv")
+
 
 ## where should the cutoff lie ?
 # 1) test differences
@@ -1222,11 +1040,6 @@ p_assign_probs <- desc_geo %>%
         size = c(0.6, 3)
       )
     ),
-    # fill = guide_legend(
-    #   ncol = 2,
-    #   override.aes = list(
-    #     shape = c(NA, NA, NA, NA))
-    #   )
   ) +
   labs(title = "Main type assignment probability", x = "", y = "Assignment probability") +
   theme_SM() +
@@ -1857,7 +1670,7 @@ ggsave(fig1, file = "plots/fig1.pdf", width = 10, height = 10)
 
 
 test_assign_probs_secondary_type <- clust_probs %>% 
-  left_join(cites_ipcc_regions, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  left_join(cities_ipcc_regions, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   ggplot(aes(cluster_name, mean_prob, col = cluster_name)) + 
   geom_violin() +
   geom_boxplot(size = .1, width = .1, outliers = F) + 
@@ -1900,7 +1713,7 @@ clust_probs %>%
 
 clust_probs %>% 
   left_join(ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  left_join(cites_ipcc_regions, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  left_join(cities_ipcc_regions, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   filter(Region == "Asia") %>% 
   filter(GC_UCN_MAI_2025 %in% c("Shanghai", "Hechi", "Fuzhou", "Guyiyang", "Tokyo", "Chiang Mai", "Ayutthaya", "Cebu City", "Manila")) %>% 
   select(GC_UCN_MAI_2025, GC_CNT_GAD_2025, mean_prob, cluster_name, secondary_cluster_name) %>% 
@@ -1912,7 +1725,7 @@ clust_probs %>%
 
 clust_probs %>% 
   left_join(ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  left_join(cites_ipcc_regions, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  left_join(cities_ipcc_regions, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   filter(Region == "Asia") %>% 
   filter(GC_UCN_MAI_2025 %in% c("New Delhi", "Vadodara", "Isfahan", "Ahwaz", "Mota", "Gaziantep", "Dubai", "Ulaanbaatar", "Mota")) %>% 
   select(GC_UCN_MAI_2025, GC_CNT_GAD_2025, mean_prob, cluster_name, secondary_cluster_name) %>% 
@@ -1990,19 +1803,10 @@ p_box_characteristics <- box_plot_add_covs_dat %>%
     label.size = 0, alpha = 0.7, inherit.aes = FALSE
   ) + 
   scale_shape_manual(values = c("Mean value by type" = 21), name = "") +
-  # Y-scale from 1/8 to 8
-  # scale_y_continuous(
-  #   trans = "log2",
-  #   breaks = c(0.125, 0.25, 0.5, 1, 2, 4, 8, 16),
-  #   labels = c("1/8", "1/4", "1/2", "1", "2", "4", "8", "16"),
-  #   limits = c(0.01, 15)
-  # ) +
-  # facet_grid(cluster_name~clustering, scales = "free", space = "free_x") +
   facet_wrap(.~variable, scales = "free") +
   ggh4x::facetted_pos_scales(
     y = y_scales
   ) +
-  # ylim(-2,17) +
   coord_flip() +
   theme_SM() +
   theme(
@@ -2205,7 +2009,7 @@ plot_multiple_cities <- function(city_names = NULL, city_ids = NULL, ghsl, clust
 }
 
 # # Vector of city names to plot"
-city_names <- c("Santiago de Cuba", "Cartagena", "Mombasa", "Cancún", "Basra", "Makassar", "Berlin", "Melbourne", "Louisville", "Chongqing")
+city_names <- c("Cartagena", "Mombasa", "Santiago de Cuba", "Cancún", "Basra", "Berlin", "Melbourne", "Louisville", "Chongqing", "Makassar")
 city_ids <- ghsl %>% filter(GC_UCN_MAI_2025 %in% city_names)
 city_ids <- city_ids %>% filter(!(GC_UCN_MAI_2025 == "Cartagena" & GC_CNT_GAD_2025 == "Spain")) %>% as.data.frame()
 city_ids <- city_ids[match(city_names, city_ids$GC_UCN_MAI_2025), ] %>% pull(ID_UC_G0)
@@ -2266,11 +2070,7 @@ case_ex <- case_ex %>%
   filter(!is.na(solution_type)) 
 
 
-# analyse and plot learning potential
-# library(matrixStats)
-# library(purrr)
-
-examples_dat <- ghsl %>% ## TODO: right continent definition
+examples_dat <- ghsl %>%
   mutate(geom = st_centroid(geom)) %>%
   select(ID_UC_G0, GC_UCN_MAI_2025, GC_DEV_USR_2025, geom) %>%
   left_join(clust, by = c("ID_UC_G0" = "GHS_urban_area_id")) %>%
@@ -2351,8 +2151,8 @@ examples_dat_teaching <- examples_dat_teaching %>%
 
 examples_dat_teaching_coords <- examples_dat_teaching %>%
   mutate(
-    lon = st_coordinates(geom)[,1],  # X = longitude
-    lat = st_coordinates(geom)[,2]   # Y = latitude
+    lon = st_coordinates(geom)[,1],
+    lat = st_coordinates(geom)[,2] 
   ) %>%
   as.data.frame() %>%
   select(-geom) %>% 
@@ -2688,7 +2488,6 @@ growth_by_phase <- data_phase %>%
   summarise(n_studies = n(), .groups = "drop") %>%
   mutate(phase = factor(phase, levels = c("AR1", "AR2", "AR3", "AR4", "AR5", "AR6"))) %>%
   arrange(cluster_name, Region, phase) %>%
-  # summarise(n_studies = sum(n_studies)) %>% 
   group_by(cluster_name, Region) %>%
   mutate(
     baseline = first(n_studies),  # for normalized growth
@@ -2716,7 +2515,7 @@ annotations <- growth_by_phase_anno %>%
   filter(!is.na(pct_growth)) %>%
   mutate(
     label = paste0(pct_growth, "%"),
-    y = 130  # place slightly above the typical range of norm_growth
+    y = 130  
   )
 
 # Final plot: normalized growth + annotations with phase-to-phase growth
@@ -2750,14 +2549,10 @@ p_g_rel <- ggplot(growth_by_phase, aes(x = year, y = norm_growth, color = Region
 # Print
 p_g_rel
 
-
-
-
 # Step 1: Assign IPCC phase labels
 data_phase <- clust_with_topics %>%
   mutate(
     publication_year = as.numeric(publication_year),
-    # Region = ifelse(Region == "Australia", "Oceania", Region),
     phase = case_when(
       publication_year < 1990 ~ "AR1",
       publication_year > 1990 & publication_year <= 1995 ~ "AR2",
@@ -2784,14 +2579,12 @@ annotations <- data_phase %>%
       phase == "AR6" ~ 2018,
       phase == "AR7" ~ 2025
     ),
-    y = 14000  # start from 0; we’ll place it just above x-axis
+    y = 14000  
   )
 
 # Step 3: Main plot with bars, vlines, and annotations
 p_g_abs <- data_phase %>%
-  filter(publication_year >= 1990
-         # & publication_year <= 2022
-  ) %>%
+  filter(publication_year >= 1990) %>%
   group_by(publication_year, cluster_name, Region) %>%
   summarise(n_studies = n(), .groups = "drop") %>%
   ggplot(aes(x = publication_year, y = n_studies, fill = Region)) +
@@ -2930,58 +2723,6 @@ p_n_studies <- clust %>%
   ) +
   labs(x = "", y = "", subtitle = "Total number of cases studied")
 
-
-# ################################################################################
-# # Cluster cities & research metrics
-# ################################################################################
-# 
-# cluster_cities <- ghsl %>%
-#   mutate(geom = st_centroid(geom)) %>%
-#   select(ID_UC_G0, geom) %>%
-#   left_join(clust_with_topics, by = c("ID_UC_G0" = "GHS_urban_area_id"))
-# 
-# pub_counts <- cluster_cities %>%
-#   as.data.frame() %>% 
-#   group_by(ID_UC_G0) %>% 
-#   summarise(research_count = n(), .groups = "drop")
-# 
-# city_topic_matrix <- pub_counts %>%
-#   # pivot_wider(names_from = "group2", values_from = "research_count", values_fill = 0) %>%
-#   right_join(ghsl %>% select(ID_UC_G0), by = "ID_UC_G0") %>%
-#   mutate(across(where(is.numeric), ~ replace_na(., 0)),
-#          ID_UC_G0 = as.character(ID_UC_G0))
-# 
-# research_metrics <- city_topic_matrix %>%
-#   as.data.frame() %>% 
-#   rowwise() %>%
-#   mutate(
-#     research_volume = sum(c_across(where(is.numeric))),
-#     research_evenness = {
-#       counts <- c_across(where(is.numeric))
-#       if (sum(counts) == 0) 0 else (1 - ineq::Gini(counts))
-#     }
-#   ) %>%
-#   ungroup() %>%
-#   select(ID_UC_G0, research_volume, research_evenness)
-
-lm(odiac_norm ~ cluster_name,
-   data = clust_probs %>% 
-     left_join(emmissions_box_dat %>% 
-                 select(ID_UC_G0, odiac_norm),
-               by = c("GHS_urban_area_id" = "ID_UC_G0"))) %>% summary()
-
-test_scatter <- clust %>% 
-  left_join(emmissions_box_dat %>% 
-              select(ID_UC_G0, odiac_norm),
-            by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  left_join(cluster_names) %>% 
-  ggplot(aes(mean_prob, odiac_norm)) + 
-  geom_point() +
-  geom_smooth(method = "lm") +
-  facet_wrap(~cluster_name) +
-  labs(title = "relationship cluster assignment probability and p.c. emissions") +
-  theme_SM()
-ggsave(test_scatter, file = "plots/test_scatter_1.pdf", width = 10, height = 10)
 
 ################################################################################
 # Similarity scores & Teaching/Learning Potentials
@@ -3430,79 +3171,3 @@ fig3fgh <- ggarrange(
 fig3 <- ggarrange(fig3abcde, fig3fgh, labels = c("", ""), ncol = 2, widths = c(3.2, 1))
 
 ggsave(fig3, file = "plots/fig3.pdf", height = 8, width = 10)
-
-# ################################################################################
-# # Hex grid and maps
-# ################################################################################
-# 
-# world <- st_transform(world, proj_robin)
-# 
-# world_hex <- st_make_grid(
-#   world,
-#   n = c(190, 190),
-#   what = "polygons",
-#   square = FALSE,
-#   flat_topped = TRUE
-# ) %>%
-#   st_as_sf() %>%
-#   mutate(hex_id = seq_len(n()))
-# 
-# ghsl_points <- ghsl %>%
-#   st_transform(proj_robin) %>%
-#   st_centroid() %>%
-#   select(ID_UC_G0, GC_UCN_MAI_2025) %>%
-#   st_centroid()
-# 
-# intersections <- st_intersection(
-#   ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025) %>% st_transform(proj_robin),
-#   world_hex
-# ) %>%
-#   mutate(inter_area = st_area(geom))
-# 
-# intersections_unique <- intersections %>%
-#   group_by(ID_UC_G0) %>%
-#   slice_max(inter_area, n = 1) %>%
-#   ungroup() %>%
-#   as.data.frame() %>%
-#   select(-geom)
-# 
-# hexa_data <- world_hex %>%
-#   left_join(intersections_unique, by = "hex_id") %>%
-#   left_join(co_mat %>% select(similarity_sums, GHS_urban_area_id), by = c("ID_UC_G0" = "GHS_urban_area_id")) %>%
-#   group_by(hex_id) %>%
-#   summarise(similarity_sums = sum(similarity_sums, na.rm = TRUE)) %>%
-#   filter(similarity_sums != 0)
-# 
-# p_similarity_map <- hexa_data %>%
-#   ggplot() +
-#   geom_sf(data = world %>% st_union(), fill = "grey95", color = NA, size = .3) +
-#   geom_sf(aes(fill = similarity_sums), color = NA) +
-#   scale_fill_viridis_c(option = "C", na.value = "grey") +
-#   geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
-#   annotate(
-#     "label",
-#     x = -Inf, y = Inf,
-#     label = "Similarity to all other cities",
-#     hjust = -0.1, vjust = 1.2,
-#     size = 3.5,
-#     fill = "white",
-#     label.size = 0.3
-#   ) + 
-#   theme_SM() +
-#   labs(y = "", x = "", fill = "Similarity to all other cities") +
-#   theme(
-#     legend.justification = "center",
-#     legend.direction = "horizontal",
-#     legend.position = c(.5, .1),
-#     legend.title = element_text(),
-#     axis.text.x = element_blank(),
-#     axis.text.y = element_blank(),
-#     axis.ticks.length = unit(0, "cm"),
-#     text = element_text(size = 8),
-#     panel.spacing = unit(-0.15, "lines"),
-#     panel.border = element_blank(),
-#     plot.margin = margin(c(-1, 0, 0, 0), "cm")
-#   )
-
-
-

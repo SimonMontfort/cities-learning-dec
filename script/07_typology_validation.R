@@ -48,12 +48,11 @@ covars <- ghsl_clean %>%
 ### 2. Load OUTCOMES
 ### ─────────────────────────────────────────────────────────────
 
-
-health <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/health.csv") %>%
-  rename(city_id = ID_UC_G0) %>%
-  mutate(GHS_hosp_pc = as.numeric(HL_FPC_HOS_2025),
-         GHS_hosp = as.numeric(HL_FCL_HOS_2024)) %>% 
-  select(city_id, GHS_hosp_pc, GHS_hosp)
+# health <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/health.csv") %>%
+#   rename(city_id = ID_UC_G0) %>%
+#   mutate(GHS_hosp_pc = as.numeric(HL_FPC_HOS_2025),
+#          GHS_hosp = as.numeric(HL_FCL_HOS_2024)) %>% 
+#   select(city_id, GHS_hosp_pc, GHS_hosp)
 
 emissions <- read_csv("data/emissions/balance_sheet.csv") %>%
   filter(Year == 2020) %>% 
@@ -179,7 +178,7 @@ dec <- read_csv("data/clustering_results/dec_clusters_k4.csv") %>%
 ### ─────────────────────────────────────────────────────────────
 
 df <- emissions %>% 
-  left_join(health, by = "city_id") %>%
+  # left_join(health, by = "city_id") %>%
   left_join(low_ele_zone_pop, by = "city_id") %>%
   left_join(low_ele_zone_built, by = "city_id") %>%
   left_join(n_studies_per_city, by = "city_id") %>% 
@@ -314,7 +313,7 @@ cluster_methods <- c(
 )
 
 outcomes <- c(
-  "GHS_hosp_pc", "GHS_hosp",
+  # "GHS_hosp_pc", "GHS_hosp",
   "ODIAC", "ODIAC_pc",
   "low_elevation_pop_share", "low_elevation_pop_n",
   "low_elevation_built_share", "low_elevation_built_n",
@@ -509,9 +508,9 @@ compare_perf <- function(method){
 ### ─────────────────────────────────────────────────────────────
 
 outcome_area <- c(
-  # Health
-  GHS_hosp_pc = "Health",
-  GHS_hosp    = "Health",
+  # # Health
+  # GHS_hosp_pc = "Health",
+  # GHS_hosp    = "Health",
   
   # Emissions
   ODIAC       = "Emissions",
@@ -531,8 +530,8 @@ outcome_area <- c(
 )
 
 outcome_labels <- c(
-  GHS_hosp_pc = "Hospitals p.c.",
-  GHS_hosp    = "Hospitals",
+  # GHS_hosp_pc = "Hospitals p.c.",
+  # GHS_hosp    = "Hospitals",
   ODIAC       = "ODIAC emissions",
   ODIAC_pc    = "ODIAC emissions p.c.",
   low_elevation_pop_share = "% population\nliving 5–10m elev.",
@@ -595,8 +594,9 @@ figA1 <- association_results %>%
     # optional: area ordering
     outcome_type = factor(outcome_type, levels = c("Emissions", 
                                                    "Vulnerability:\ncoastal", "Vulnerability:\nfloods",
-                                                   "Vulnerability:\nwildfire", "Vulnerability:\nheat",
-                                                   "Health"))
+                                                   "Vulnerability:\nwildfire", "Vulnerability:\nheat"
+                                                   # "Health"
+                                                   ))
   ) %>% 
   group_by(outcome_label) %>% 
   mutate(mean_eta = mean(eta_squared)) %>% 

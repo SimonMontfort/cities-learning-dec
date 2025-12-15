@@ -146,7 +146,7 @@ p_clustering_performance_agg <- all_data %>%
   scale_y_continuous(breaks = scales::pretty_breaks()) +
   facet_grid(metric ~ method, scales = "free_y") +
   labs(x = "Number of clusters", y = "Score") +
-  theme(legend.position = c(.08,.78), 
+  theme(legend.position = c(.08,.55), 
         legend.title = element_blank(),
         legend.justification = "left",
         legend.box.just = "left", 

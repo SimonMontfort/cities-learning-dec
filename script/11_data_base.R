@@ -1,4 +1,3 @@
-
 R.version
 # _                           
 # platform       aarch64-apple-darwin20      
@@ -104,22 +103,12 @@ case_studies <- oa %>%
 # )
 # saveRDS(article_specs, "data/OpenAlex/meta.Rds")
 article_specs <- readRDS("data/OpenAlex/meta.Rds")
-# 
-# # extract authors
-# authors <- article_specs %>% 
-#   rename(article_id = id) %>% 
-#   group_by(article_id) %>% 
-#   select(authorships) %>% 
-#   unnest(authorships) %>% 
-#   summarise(authors = paste0(display_name, collapse = ", "))
-
 
 ################################################################################
 # clean and store db
 ################################################################################
 
 case_studies_clean <- case_studies %>% 
-  # left_join(authors, by = c("id" = "article_id")) %>% 
   left_join(article_specs %>% 
               group_by(id) %>% 
               distinct() %>% 
@@ -150,31 +139,3 @@ wb$add_data(sheet = "Case study literature", x = cleaned_case_studies)
 
 # Save the workbook with both sheets
 wb$save("data/case_selection/case_selection_and_literature.xlsx")
-
-################################################################################
-# example cities
-################################################################################
-
-city_names_selected <- c("Makassar", "Cancún", "Basra", "Santiago de Cuba", "Cartagena", "Mombasa", "Berlin", "Melbourne", "Louisville", "Chongqing")
-
-ids_examples <- case_studies_clean %>% 
-  mutate(names_split = stri_split_fixed(city_names, ", ")) %>% 
-  select(OpenAlex_article_id, city_names) %>%
-  dplyr::filter(city_names %in% city_names_selected) %>% # single case studies
-  # filter(grepl(paste(city_names_selected, collapse = "|"), city_names)) %>% # comparative and single case studies
-  pull(OpenAlex_article_id)
-
-case_studies_examples <- case_studies_clean %>% 
-  filter(OpenAlex_article_id %in% ids_examples) %>% 
-  arrange(city_names)
-
-write_xlsx(case_studies_examples, file = "data/case_selection/case_studies_examples.xlsx")
-
-case_studies_examples_old <- read_xlsx("data/case_selection/case_studies_examples_old.xlsx")
-
-case_studies_examples_additional <- case_studies_examples %>% 
-  filter(!OpenAlex_article_id %in% case_studies_examples_old$OpenAlex_article_id) 
-
-table(case_studies_examples_additional$city_names)
-
-write_xlsx(case_studies_examples_additional, file = "data/case_selection/case_studies_examples_additional.xlsx")
