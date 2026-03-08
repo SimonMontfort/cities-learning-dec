@@ -24,7 +24,7 @@ library(caret)       # For scaling/standardization
 library(nngeo)       # nearest neighbour
 
 ################################################################################
-# join data
+# load data
 ################################################################################
 # Load cities dataset
 cities_clean <- read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation.parquet")
@@ -32,11 +32,10 @@ cities_clean <- read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2
 # Load GHSL geometry (if needed later)
 ghsl <- st_read("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg")
 
-# Add precipitation (climate) data
+# precipitation (climate) data
 climate_df <- read_csv("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_THEME_CLIMATE_GLOBE_R2024A.csv") %>%
   select(ID_UC_G0, CL_B12_CUR_2010) %>% 
   rename(GHS_precipitation = CL_B12_CUR_2010)
-
 
 # load additional data
 load_data <- function(file_name, value_col, new_name) {
@@ -117,6 +116,13 @@ variables <- c(
   "GHS_precipitation", "hdd", "cdd"
 )
 
+
+modis <- read.csv("data/modis/modis_pft_shares.csv") %>% as_tibble()
+
+cities_clean <- cities_clean %>% 
+  left_join(modis, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  filter(share_urban != 0)
+
 cities_clean_sub <- cities_clean %>%
   select(all_of(variables), GHS_urban_area_id)
 
@@ -125,4 +131,4 @@ cities_clean_sub %>%
   summarise_all(.funs = function(x) sum(is.na(x))) %>% 
   c()
 
-write_parquet(cities_clean_sub, "data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included.parquet")
+write_parquet(cities_clean_sub, "data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included_urban.parquet")

@@ -61,19 +61,12 @@ gender = load_data("socioeconomic.csv", "SC_SEC_GDF_2020", "GHS_female_gender_in
 hdi = load_data("socioeconomic.csv", "SC_SEC_HDI_2020", "GHS_HDI")
 old_pop = load_data("socioeconomic.csv", "SC_SEC_PCO_2020", "GHS_old_pop")
 young_pop = load_data("socioeconomic.csv", "SC_SEC_PCY_2020", "GHS_young_pop")
-land_cons = load_data("land_cons.csv", "SD_LUE_LPR_2020_2030", "GHS_land_cons")
 road_len = load_data("infrastructures.csv", "IN_ROA_DEN_2024", "GHS_road_len")
 hosp_pc = load_data("health.csv", "HL_FPC_HOS_2025", "GHS_hosp_pc")
-print(old_pop)
-print(hdi)
 
 old_pop["GHS_old_pop"] = old_pop["GHS_old_pop"]/young_pop["GHS_young_pop"]
 
-emissions = pd.read_csv("data/emissions/balance_sheet.csv")
-emissions = emissions[emissions['Year'] == 2022]
-emissions_subset = emissions[['ID_UC_G0', 'ODIAC']].copy()
-
-cities_clean = pd.read_parquet('data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included.parquet', engine='pyarrow')
+cities_clean = pd.read_parquet('data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included_urban.parquet', engine='pyarrow')
 
 cities_clean = (
     cities_clean
@@ -81,18 +74,12 @@ cities_clean = (
         .drop(columns=['ID_UC_G0'])
         .merge(hdi, left_on='GHS_urban_area_id', right_on='ID_UC_G0', how='left')
         .drop(columns=['ID_UC_G0'])
-        .merge(land_cons, left_on='GHS_urban_area_id', right_on='ID_UC_G0', how='left')
-        .drop(columns=['ID_UC_G0'])
         .merge(old_pop, left_on='GHS_urban_area_id', right_on='ID_UC_G0', how='left')
-        .drop(columns=['ID_UC_G0'])
-        .merge(emissions_subset, left_on='GHS_urban_area_id', right_on='ID_UC_G0', how='left')
-        .drop(columns=['ID_UC_G0'])
-        .merge(road_len, left_on='GHS_urban_area_id', right_on='ID_UC_G0', how='left')
         .drop(columns=['ID_UC_G0'])
 )
 
 
-cities_clean['odiac_norm'] = cities_clean['ODIAC'] / cities_clean['GHS_population']
+#cities_clean['odiac_norm'] = cities_clean['ODIAC'] / cities_clean['GHS_population']
 
 variables = [
     'GHS_population', 'GHS_population_growth',
@@ -112,6 +99,7 @@ cities_clean_sub = cities_clean[variables + ['GHS_urban_area_id']].copy()
 
 cities_clean_sub.to_parquet('data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included+.parquet', engine='pyarrow')
 
+print(len(cities_clean_sub))
 
 # Check for missing values BEFORE imputation
 print("\n=== Missing values BEFORE imputation ===")
@@ -211,7 +199,7 @@ class ClusteringLayer(Layer):
         self._initial_weights = [weights]
 
 
-def target_distribution(q, temperature=.5):
+def target_distribution(q, temperature=.2):
     weight = q ** 2 / tf.reduce_sum(q, axis=0)
     weight = tf.transpose(tf.transpose(weight) / tf.reduce_sum(weight, axis=1))
 
@@ -274,9 +262,9 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
     # Use fixed architecture, best-performing parameters inserted
     autoencoder = build_autoencoder_fixed(
         encoding_dim=4,    # best values
-        l2_reg=5.086267866771555e-06,      # best values
-        units1=80,         # best values
-        units2=16          # best values
+        l2_reg=6.770866604848463e-05,      # best values
+        units1=96,         # best values
+        units2=32          # best values
     )
 
     # Train with early stopping
@@ -596,7 +584,7 @@ def flatten_performance_scores(results):
 
 
 if __name__ == '__main__':
-    cluster_range = [4, 3, 5, 6, 7, 8, 9, 10, 11]
+    cluster_range = [4] # , 3, 5, 6, 7, 8, 9, 10, 11
     n_runs = 50
 
     performance_scores = run_experiments(cluster_range, n_runs)

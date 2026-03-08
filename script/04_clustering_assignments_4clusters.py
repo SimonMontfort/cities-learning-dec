@@ -76,7 +76,7 @@ def compute_representative_scores(features_df, assigned_clusters, n_clusters, gh
     return pd.DataFrame(rep_scores)
 
 
-def detect_small_clusters(pattern="data/clustering_results/dec_soft_assignments_run*_cluster_4.csv", threshold=10):
+def detect_small_clusters(pattern="data/clustering_results/dec_soft_assignments_run*_cluster_4.csv", threshold=20):
 
     problem_runs = {}
     files = glob.glob(pattern)
@@ -119,7 +119,7 @@ def summarize_clustering_results(results, ghs_ids, n_clusters, dir=None):
     print(f"Loaded {n_runs} DEC runs")
 
     # 2. exclude problematic runs + silhouette weighting
-    manual_excluded = detect_small_clusters(pattern=f"data/clustering_results/dec_soft_assignments_run*_clusters4.csv", threshold=10)
+    manual_excluded = detect_small_clusters(pattern=f"data/clustering_results/dec_soft_assignments_run*_clusters4.csv", threshold=50)
     print(manual_excluded)
     manual_excluded ={}
 
@@ -198,11 +198,16 @@ if __name__ == "__main__":
     os.chdir("/Users/simon/Documents/repo/cities-learning-dec")
 
     n_runs = 50
-    cities_clean_scaled_df = pd.read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_scaled.parquet")
+    cities_clean_scaled_df = pd.read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included_scaled.parquet")
     ghs_ids = cities_clean_scaled_df["GHS_urban_area_id"].values
     performance_scores = pd.read_csv("data/clustering_results/raw_clustering_scores.csv")
 
-    cluster_range = [4, 3, 5, 6, 7, 8, 9, 10, 11]
+    cluster_range = [4] # , 3, 5, 6, 7, 8, 9, 10, 11 range(3,12)
+
+    print(
+        len(performance_scores),
+        len(ghs_ids)
+    )
 
     for n_clusters in cluster_range:
         df_final = summarize_clustering_results(performance_scores, ghs_ids, n_clusters, dir="data/clustering_results")

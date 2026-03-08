@@ -73,7 +73,7 @@ emissions = pd.read_csv("data/emissions/balance_sheet.csv")
 emissions = emissions[emissions['Year'] == 2022]
 emissions_subset = emissions[['ID_UC_G0', 'ODIAC']].copy()
 
-cities_clean = pd.read_parquet('data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included.parquet', engine='pyarrow')
+cities_clean = pd.read_parquet('data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included_urban.parquet', engine='pyarrow')
 
 cities_clean = (
     cities_clean

@@ -46,9 +46,6 @@ clust <- read.csv("data/clustering_results/dec_clusters_k4.csv")
 ghsl <- read_sf("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg")
 ghsl_clean <- read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included+.parquet")
 
-labelled_topics <- readxl::read_xlsx("data/topic_model/labelled_topics_2.xlsx")
-main_topic <- read.csv("data/topic_model/main_topic_220.csv")
-
 world <- ne_countries(scale = "medium", returnclass = "sf")
 bb <- ne_download(type = "wgs84_bounding_box", category = "physical", returnclass = "sf") 
 
@@ -76,6 +73,8 @@ write.csv(clean_places, "data/geoparser/clean_places_augmented_dedup.csv")
 n_studies_per_city <- clean_places %>% 
   group_by(city_id) %>% 
   summarise(n_studies = n())
+
+write.csv(n_studies_per_city, "data/case_study_count/n_studies_per_city.csv")
 
 # ipcc regions
 ipcc_regions <- st_read("data/IPCC-WGI-reference-regions-v4_shapefile/IPCC-WGI-reference-regions-v4.shp")
@@ -137,7 +136,7 @@ co_vars <- c("GHS_population", "GHS_population_growth", "GHS_population_density"
              # , "odiac_norm"
 )
 co_vars_formatted <- c("Population", "Population growth", "Population density", "Population density growth", 
-                       "65+ population share", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
+                       "Old to young population shares", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
                        "Critical infrastructure", 
                        # "Greenness", 
                        # "Precipitation",
@@ -154,10 +153,10 @@ reg_vars_wg2 <- c("North America", "South America", "Europe", "Africa", "Asia", 
 cluster_names <- data.frame(
   consensus_label_majority = 0:3,
   cluster_name = c(
+    "Type 1",
     "Type 2",
-    "Type 3",
-    "Type 1", 
-    "Type 4"
+    "Type 4", 
+    "Type 3"
   )) %>% 
   mutate(cluster_name = factor(cluster_name, levels = c("Type 1",
                                                         "Type 2",
@@ -227,7 +226,7 @@ rename_co_vars <- function(df, column) {
     'GHS_HDI' = "HDI", 
     'GHS_female_gender_index' = "Gender index",
     # "GHS_land_cons" = "Land consumption",
-    "GHS_old_pop" =  "65+ population share",
+    "GHS_old_pop" =  "Old to young population shares",
     # "GHS_road_len" = "Road density"
     # , "GHS_hosp_pc" = "Hospitals p.c."
     "odiac_norm" = "CO2 emissions p.c."
@@ -958,6 +957,23 @@ ggsave(fig1_old, filename = "plots/fig1_old.pdf", width = 10, height = 10)
 # ggsave(box_plot_list[[2]], filename = "plots/type_2.pdf", width = 5, height = 3.8)
 # ggsave(box_plot_list[[3]], filename = "plots/type_3.pdf", width = 5, height = 3.8)
 # ggsave(box_plot_list[[4]], filename = "plots/type_4.pdf", width = 5, height = 3.8)
+
+selected_cs <- readxl::read_xlsx("/Users/simon/Downloads/case studies.xlsx")
+
+
+
+
+not_matching <- selected_cs %>% 
+  left_join(clust %>% 
+              left_join(ghsl %>% 
+                          select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), 
+                        by = c("GHS_urban_area_id" = "ID_UC_G0")),
+            by = c("City Name" = "GC_UCN_MAI_2025", "Country" = "GC_CNT_GAD_2025")) %>% 
+  filter(cluster_name != Type) %>% 
+  select(`City Name`, Country, type_initial = Type, type_revised = cluster_name)
+
+not_matching
+(nrow(not_matching)-2)/nrow(selected_cs)
 
 
 ################################################################################

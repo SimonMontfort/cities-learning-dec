@@ -104,6 +104,21 @@ case_studies <- oa %>%
 # saveRDS(article_specs, "data/OpenAlex/meta.Rds")
 article_specs <- readRDS("data/OpenAlex/meta.Rds")
 
+# library(openalexR)
+# article_specs2 <- oa_fetch(
+#   entity = "works",
+#   id = case_studies$id,
+#   to_publication_date = "2025-03-24",
+#   count_only = FALSE,
+#   verbose = TRUE,
+#   options = list(select = c(
+#     "doi", "id"
+#   ))
+# )
+# saveRDS(article_specs2, "data/OpenAlex/meta2.Rds")
+article_specs2 <- readRDS("data/OpenAlex/meta2.Rds")
+
+
 ################################################################################
 # clean and store db
 ################################################################################
@@ -115,9 +130,10 @@ case_studies_clean <- case_studies %>%
               select(-authorships, -any_repository_has_fulltext, 
                      -is_oa_anywhere, -referenced_works, -concepts), 
             by = "id") %>% 
+  left_join(article_specs2, by = "id") %>% 
   select(OpenAlex_article_id = id, publication_year, publication_date, authors, title, abstract = text, cited_by_count,
-         type, oa_status, oa_url, language,
-         city_names, countries, starts_with("Region"), starts_with("Type")
+         type, oa_status, oa_doi = doi, oa_url, language,
+         city_names, city_ids, countries, starts_with("Region"), starts_with("Type")
          )
   
 
@@ -139,3 +155,5 @@ wb$add_data(sheet = "Case study literature", x = cleaned_case_studies)
 
 # Save the workbook with both sheets
 wb$save("data/case_selection/case_selection_and_literature.xlsx")
+
+

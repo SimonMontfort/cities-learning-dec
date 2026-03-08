@@ -21,6 +21,7 @@ library(tidyverse)
 library(broom)
 library(knitr)
 library(effsize)
+library(sf)
 
 ### ─────────────────────────────────────────────────────────────
 ### 1. Load COVARIATES
@@ -500,9 +501,6 @@ compare_perf <- function(method){
   mean(overall_comparison$improvement, na.rm = TRUE)
 }
 
-
-
-
 ### ─────────────────────────────────────────────────────────────
 ### VISUALIZATION: EFFECT SIZES BY METHOD
 ### ─────────────────────────────────────────────────────────────
@@ -628,3 +626,7 @@ figA1 <- association_results %>%
 figA1
 
 ggsave("plots/figA1.pdf", figA1, width = 10, height = 8)
+
+
+
+

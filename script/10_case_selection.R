@@ -662,6 +662,7 @@ clust_prob_clean <- clust_prob %>%
   left_join(n_studies_per_city, by = "city_id") %>% 
   mutate(n_studies = ifelse(is.na(n_studies), 0, n_studies)) %>% 
   left_join(main_mixed %>% select(-GC_UCN_MAI_2025), by = c("city_id", "cluster_name")) %>% 
+  mutate(cluster_name = ifelse(main_mixed == "mixed", "mixed", cluster_name)) %>% 
   select(city_id, city_name = GC_UCN_MAI_2025, 
          country_name = GC_CNT_GAD_2025, region = Region, cluster_name, main_or_mixed_type = main_mixed,
          "assignment_probability: Type 1", 
@@ -689,6 +690,7 @@ wb$add_data(sheet = "Characteristics and types", x = clust_prob_clean)
 
 # Save the workbook with both sheets
 wb$save("data/case_selection/case_selection_and_literature.xlsx")
+
 
 
 # ################################################################################
@@ -857,4 +859,260 @@ for (reg in unique(clust_stud_pop$Region)) {
 
 # Save file
 saveWorkbook(wb, "data/clustering_results/city_probabilities_by_region.xlsx", overwrite = TRUE)
+
+################################################################################
+# Practitioner's test
+################################################################################
+
+wrong_cities <- c("Abu Matarig", "Kyolo", "Kisenge", "Mutabi", "Kapoeta", "Iludun", "Nsioni", "Ngodo", "Ekwegbe", "Awomama", "Jesse", "Nine Mile Corner", "Kamiji", "", "Ore", # Africa
+                  "Marapicu", "Polvilho", # South America
+                  "Bhushan Steel City", "Agats", "Qingan", "Arun", "Morin Dawa", "Dunhua", "Xiuyan", "Benxi Manchu Autonomous County", "Antu", # Asia
+                  "Koçören", "Manchester", "Sal'sk", # Europe (Manchester is incorrectly assigned no studies)
+                  "San José del Valle" # North America 
+                  
+                  ,"Thawe", "Sathiya", "Kebonan", "Nurrār", "Purworejo", "Kertasari", "Coari", "Al Beidha", "Phulbaria", "Baneshwar", "Dogari Tiv",
+                  "Funan", "Dawu", "Xiaoxian", "Kuqa", "Xindai", "Fumin", "Manazil Baradan", "Yutian", "Huating", "Mudanya", "Qianxi", "Khrew", "Shangyou", "El Alamito",
+                  "Xiongyue", "Wangqing", "Ilaga", "Enarotali", "Yixian", "Liangcheng", "Onitsha", "Тимофеевка",
+                  "Imehejek", "Шелепино", "`Adan Barakah", "Titi", "Panguila", "Kasaï-Oriental", "Buco-Zau"
+                  
+) 
+
+set.seed(1)
+pract_test <- clust_prob_clean %>%
+  group_by(cluster_name) %>%
+  sample_n(100) 
+
+pract_test_cleaned <- pract_test %>% 
+  filter(!city_name %in% wrong_cities) %>% 
+  slice(1:50)
+
+# tm_shape(ghsl %>% filter(GC_UCN_MAI_2025 == "Kaduna")) + tm_dots()
+
+pract_test_hand_selected <- clust_prob_clean %>% 
+  filter((city_name == "Udaipur" & country_name == "India" & city_id == 6692)
+         | city_name == "Agra" 
+         | city_name == "Freetown" 
+         | city_name == "Basra" 
+         | city_name == "Maracaibo" 
+         | city_name == "Harare" 
+         | city_name == "Monrovia" 
+         | city_name == "N'Djamena" 
+         | city_name == "Port-au-Prince" 
+         | city_name == "Nouakchott" 
+         | city_name == "Mombasa" 
+         | city_name == "San Salvador" 
+         | city_name == "Beirut" 
+         | city_name == "Manama" 
+         | city_name == "Papeete" 
+         | city_name == "Tangier" 
+         | city_name == "Bridgetown" 
+         | city_name == "Asuncion" 
+         | city_name == "Nassau" 
+         | city_name == "Marrakesh" 
+         | city_name == "Funchal" 
+         | city_name == "Zanzibar City" 
+         | city_name == "Lilongwe" 
+         | city_name == "Al-Kaf" 
+         | (city_name == "Blantyre" & country_name == "Malawi")
+         | city_name == "Homs" 
+         | city_name == "Samarqand" 
+         | city_name == "Baoding" 
+         | city_name == "Port Said" 
+         | city_name == "Saint-Denis" 
+         | city_name == "Kaduna" 
+         | city_name == "Kaduna" 
+         | city_name == "N'Djamena"
+         | city_name == "Sialkot"
+         | city_name == "Niamey"
+         | city_name == "Rajkot"
+         | city_name == "Jodhpur"
+         | city_name == "Gwalior"
+         | city_name == "Port of Spain"
+         | city_name == "Paramaribo"
+         | city_name == "Zhangzhou"
+         | city_name == "Taizhou"
+         | city_name == "Liuzhou"
+         | city_name == "Mysuru"
+         | city_name == "Dehradun"
+         | city_name == "Bucaramanga"
+         | city_name == "Kaduna"
+         | city_name == "Sialkot"
+         | city_name == "Paris"
+         | city_name == "München"
+         | city_name == "Berlin"
+         | city_name == "Lausanne"
+         | city_name == "Sylhet"
+         | city_name == "Khulna"
+         | city_name == "Mataram"
+         | city_name == "Oleh"
+         | city_name == "Basel"
+  ) %>% 
+  as.data.frame() %>% 
+  arrange(city_name)
+
+comments <- read_xlsx("data/practitioner_validation/practitioner_validation_comment.xlsx")
+comments <- comments %>% select(city_id, internet_source)
+
+pract_test_cleaned <- pract_test_cleaned %>% 
+  mutate(
+    prob = case_when(
+      cluster_name == "Type 1" ~ `assignment_probability: Type 1`,
+      cluster_name == "Type 2" ~ `assignment_probability: Type 2`,
+      cluster_name == "Type 3" ~ `assignment_probability: Type 3`,
+      cluster_name == "Type 4" ~ `assignment_probability: Type 4`,
+      TRUE ~ NA_real_
+    )
+  ) %>% 
+  ungroup()
+
+
+pract_test_cleaned <- bind_rows(pract_test_hand_selected, pract_test_cleaned) %>% 
+  arrange(region, cluster_name, -population) %>%
+  select(-prob) %>% 
+  left_join(comments, by ="city_id") %>% 
+  filter(!duplicated(city_id)) %>% 
+  mutate(
+    population = round(population /1e6, 3),
+    population_density = round(population_density /1e6, 3)
+  ) %>% 
+  as_tibble()
+
+
+vars <- c(
+  "population", "population_growth",
+  "population_density", "population_density_growth",
+  "old_pop_relative_to_young", "GDP_PPP", "GDP_PPP_growth",
+  "critical_infrastructure", "female_gender_index",
+  "human_development_index", "heating_degree_days", "cooling_degree_days"
+)
+
+wb <- createWorkbook()
+addWorksheet(wb, "pract valid")
+
+writeData(wb, "pract valid", pract_test_cleaned)
+
+# ---- Freeze top row ----
+freezePane(wb, "pract valid", firstRow = TRUE)
+
+# ---- Header style: 45-degree rotation ----
+header_style <- createStyle(
+  textRotation = 45,
+  halign = "center",
+  valign = "bottom",
+  wrapText = TRUE
+)
+
+addStyle(
+  wb, "pract valid",
+  style = header_style,
+  rows = 1,
+  cols = 1:ncol(pract_test_cleaned),
+  gridExpand = TRUE,
+  stack = TRUE
+)
+
+setRowHeights(
+  wb,
+  sheet = "pract valid",
+  rows = 1,
+  heights = 130   # ≈ 134 pixels
+)
+
+# ---- Bold border around entire table ----
+table_border_style <- createStyle(
+  border = "TopBottomLeftRight",
+  borderStyle = "thin",
+  borderColour = "black"
+)
+
+addStyle(
+  wb,
+  sheet = "pract valid",
+  style = table_border_style,
+  rows = 1:(nrow(pract_test_cleaned) + 1),
+  cols = 1:ncol(pract_test_cleaned),
+  gridExpand = TRUE,
+  stack = TRUE
+)
+
+# ---- Reduce column widths ----
+# narrow numeric columns, wider ID columns
+default_widths <- rep(10, ncol(pract_test_cleaned))
+names(default_widths) <- names(pract_test_cleaned)
+
+default_widths[vars] <- 6          # heatmap-style numeric cols
+default_widths["cluster_name"] <- 5.67
+default_widths["main_or_mixed_type"] <- 7.83
+default_widths["assignment_probability: Type 1"] <- 4.67
+default_widths["assignment_probability: Type 2"] <- 4.67
+default_widths["assignment_probability: Type 3"] <- 4.67
+default_widths["assignment_probability: Type 4"] <- 4.67
+default_widths["number_of_studies"] <- 5.33
+default_widths["city_id"] <- 5.33
+
+setColWidths(
+  wb,
+  sheet = "pract valid",
+  cols = 1:ncol(pract_test_cleaned),
+  widths = default_widths
+)
+
+# ---- Colour scales ----
+col_idx <- match(vars, names(pract_test_cleaned))
+col_idx <- col_idx[!is.na(col_idx)]
+
+n <- nrow(pract_test_cleaned)
+data_rows <- 2:(n + 1)
+
+for (j in col_idx) {
+  conditionalFormatting(
+    wb, "pract valid",
+    cols = j,
+    rows = data_rows,
+    type = "colourScale",
+    style = c("#F7FBFF", "#08306B")  
+  )
+}
+
+prob_vars <- c(
+  "assignment_probability: Type 1",
+  "assignment_probability: Type 2",
+  "assignment_probability: Type 3",
+  "assignment_probability: Type 4"
+)
+
+prob_col_idx <- match(prob_vars, names(pract_test_cleaned))
+prob_col_idx <- prob_col_idx[!is.na(prob_col_idx)]
+
+for (j in prob_col_idx) {
+  conditionalFormatting(
+    wb,
+    sheet = "pract valid",
+    cols = j,
+    rows = data_rows,
+    type = "colourScale",
+    style = c("#FFFFFF", "#2CA25F")  
+  )
+}
+
+prob_col_idx <- match("number_of_studies", names(pract_test_cleaned))
+prob_col_idx <- prob_col_idx[!is.na(prob_col_idx)]
+
+for (j in prob_col_idx) {
+  conditionalFormatting(
+    wb,
+    sheet = "pract valid",
+    cols = j,
+    rows = data_rows,
+    type = "colourScale",
+    style = c("#FFFFFF", "darkred"),
+    rule  = c(0, 100)
+  )
+}
+
+saveWorkbook(
+  wb,
+  "data/practitioner_validation/practitioner_validation_final.xlsx",
+  overwrite = TRUE
+)
 
