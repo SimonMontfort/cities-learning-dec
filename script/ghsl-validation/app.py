@@ -35,6 +35,7 @@ from config import (
     SCORE_WEIGHTS, CATEGORIES, MODIS_PFT_COLORS, FLASK_PORT, FLASK_DEBUG,
 )
 INDICATORS_PATH = DATA_PATH.parent / "country_indicators.csv"
+CHIPS_DIR       = DATA_PATH.parent / "chips"   # pre-rendered PNGs from prerender_chips.py
 
 # ── App ────────────────────────────────────────────────────────
 app = Flask(__name__, template_folder=Path(__file__).parent / "templates")
@@ -43,6 +44,99 @@ app = Flask(__name__, template_folder=Path(__file__).parent / "templates")
 _thumb_cache    = {}
 _country_cache  = {}   # country → indicator data for scatter plots
 _csv_lock       = threading.Lock()   # serialise all CSV reads + writes
+
+# ── Per-key render locks ───────────────────────────────────────
+# Prevents duplicate concurrent renders for the same (city, kind).
+# Without this a live request and a prefetch job can both try to render
+# simultaneously; the second waits then reuses the cache from the first.
+_render_locks      = {}
+_render_locks_lock = threading.Lock()
+
+def _get_render_lock(key):
+    with _render_locks_lock:
+        if key not in _render_locks:
+            _render_locks[key] = threading.Lock()
+        return _render_locks[key]
+
+
+# ── Background prefetch ────────────────────────────────────────
+import queue as _queue
+_prefetch_queue  = _queue.Queue()
+_prefetch_active = set()   # keys currently queued or in-flight
+_prefetch_lock   = threading.Lock()
+_PREFETCH_AHEAD  = 20
+_KINDS           = ("ntl", "modis", "wsf")
+
+
+def _prefetch_worker():
+    """Single daemon thread: render thumbnails for upcoming cities."""
+    while True:
+        item = _prefetch_queue.get()
+        if item is None:
+            break
+        city_index, kind = item
+        key = (city_index, kind)
+        try:
+            if key not in _thumb_cache:
+                # Fast path: chip already on disk
+                chip_path = CHIPS_DIR / f"{city_index}_{kind}.png"
+                if chip_path.exists():
+                    _thumb_cache[key] = base64.b64encode(
+                        chip_path.read_bytes()).decode("utf-8")
+                else:
+                    # Slow path: render live
+                    cities = load_cities()
+                    if 0 <= city_index < len(cities):
+                        city = cities[city_index]
+                        lat  = float(city.get("lat", 0))
+                        lon  = float(city.get("lon", 0))
+                        polygon_geojson = None
+                        bbox = None
+                        try:
+                            polygon_geojson = json.loads(city.get("polygon_geojson", "{}"))
+                            bbox = compute_bbox(polygon_geojson, pad=0.5)
+                        except Exception:
+                            pass
+                        if bbox:
+                            west, south, east, north = bbox
+                        else:
+                            area = float(city.get("area_km2") or 100)
+                            pad  = min(2.0, max(0.3, (area ** 0.5) / 5))
+                            west, east   = lon - pad, lon + pad
+                            south, north = lat - pad, lat + pad
+                        render_lock = _get_render_lock(key)
+                        with render_lock:
+                            if key not in _thumb_cache:
+                                png_b64 = _make_thumbnail(west, south, east, north, kind, polygon_geojson)
+                                _thumb_cache[key] = png_b64
+        except Exception:
+            pass
+        finally:
+            with _prefetch_lock:
+                _prefetch_active.discard(key)
+            _prefetch_queue.task_done()
+
+
+def _enqueue_prefetch(from_index):
+    """Queue the next _PREFETCH_AHEAD cities (all 3 kinds) after from_index."""
+    cities = load_cities()
+    total  = len(cities)
+    queued = 0
+    i      = from_index + 1
+    while queued < _PREFETCH_AHEAD and i < total:
+        for kind in _KINDS:
+            key = (i, kind)
+            if key not in _thumb_cache:
+                with _prefetch_lock:
+                    if key not in _prefetch_active:
+                        _prefetch_active.add(key)
+                        _prefetch_queue.put(key)
+        queued += 1
+        i += 1
+
+
+_worker_thread = threading.Thread(target=_prefetch_worker, daemon=True)
+_worker_thread.start()
 
 
 # ── CSV helpers ────────────────────────────────────────────────
@@ -269,7 +363,7 @@ def _raster_to_pil(data, kind):
     else:
         rgba = np.zeros((h, w, 4), dtype=np.uint8)
 
-    return PILImage.fromarray(rgba, "RGBA")
+    return PILImage.fromarray(rgba)
 
 
 def _make_thumbnail(west, south, east, north, kind, polygon_geojson=None):
@@ -293,12 +387,15 @@ def _make_thumbnail(west, south, east, north, kind, polygon_geojson=None):
         else:
             datasets = [rasterio.open(t) for t in tile_paths]
             try:
-                if len(datasets) > 1:
-                    mosaic, _ = rasterio_merge(datasets)
-                    data = mosaic[0].astype(float)
-                else:
-                    window = from_bounds(west, south, east, north, datasets[0].transform)
-                    data = datasets[0].read(1, window=window).astype(float)
+                # Always clip to bbox so the output array is spatially aligned
+                # to exactly (west, south, east, north). Without bounds= the
+                # merge returns the full tile extent and the city is a small,
+                # offset slice of it — causing a visible shift vs the polygon.
+                mosaic, _ = rasterio_merge(
+                    datasets,
+                    bounds=(west, south, east, north),
+                )
+                data = mosaic[0].astype(float)
             finally:
                 for ds in datasets:
                     ds.close()
@@ -307,14 +404,43 @@ def _make_thumbnail(west, south, east, north, kind, polygon_geojson=None):
         if not raster_path.exists():
             missing_msg = f"Raster not found: {raster_path.name}"
         else:
-            with rasterio.open(raster_path) as src:
-                window = from_bounds(west, south, east, north, src.transform)
-                data = src.read(1, window=window).astype(float)
-                nodata = src.nodata
-            if nodata is not None:
-                data = np.where(data == nodata, np.nan, data)
+            # Read in a worker thread with a timeout — the NTL COG lives on
+            # Google Drive whose FUSE layer can stall arbitrarily on large
+            # random-access reads.  A 12-second timeout prevents the Flask
+            # thread from hanging forever, which caused the browser to give up
+            # and never display the thumbnail.
+            _read_result = [None, None, None]   # [data, nodata, error]
+            def _do_read():
+                try:
+                    with rasterio.open(raster_path) as src:
+                        window = from_bounds(west, south, east, north, src.transform)
+                        window = rasterio.windows.Window(
+                            col_off=int(window.col_off),
+                            row_off=int(window.row_off),
+                            width=max(1, int(round(window.width))),
+                            height=max(1, int(round(window.height))),
+                        )
+                        _read_result[0] = src.read(1, window=window).astype(float)
+                        _read_result[1] = src.nodata
+                except Exception as exc:
+                    _read_result[2] = exc
+            t = threading.Thread(target=_do_read, daemon=True)
+            t.start()
+            t.join(timeout=12)
+            if t.is_alive():
+                # GDrive stall — show placeholder rather than hanging forever
+                missing_msg = f"{kind.upper()} read timed out (GDrive stall)"
+            elif _read_result[2] is not None:
+                raise _read_result[2]
+            else:
+                data   = _read_result[0]
+                nodata = _read_result[1]
+                if nodata is not None:
+                    data = np.where(data == nodata, np.nan, data)
 
-    # ── Render raster on dark background (OSM served separately) ─
+    # ── Render (PIL composite + matplotlib) ──────────────────
+    # Each thread uses its own figure (plt.subplots / plt.close) so
+    # Agg renders are independent — no global lock needed here.
     try:
         from PIL import Image as PILImage
         bg = PILImage.new("RGBA", (PX, PX), (20, 20, 30, 255))
@@ -411,9 +537,10 @@ def get_city(city_index):
         try: return int(float(v))
         except: return d
 
+    # Kick off background pre-caching for the next _PREFETCH_AHEAD cities
+    threading.Thread(target=_enqueue_prefetch, args=(city_index,), daemon=True).start()
+
     return jsonify({
-        "index":            city_index,
-        "bbox":             bbox,
         "total":            total,
         "reviewed":         reviewed,
         "city_name":        city.get("city_name", ""),
@@ -464,6 +591,14 @@ def thumbnail(city_index, kind):
     if cache_key in _thumb_cache:
         return jsonify({"png_b64": _thumb_cache[cache_key]})
 
+    # ── Fast path: serve pre-rendered chip from disk ──────────
+    chip_path = CHIPS_DIR / f"{city_index}_{kind}.png"
+    if chip_path.exists():
+        png_b64 = base64.b64encode(chip_path.read_bytes()).decode("utf-8")
+        _thumb_cache[cache_key] = png_b64
+        return jsonify({"png_b64": png_b64})
+
+    # ── Slow path: render live (fallback if chip missing) ─────
     cities = load_cities()
     if city_index < 0 or city_index >= len(cities):
         return jsonify({"error": "Index out of range"}), 404
@@ -488,17 +623,41 @@ def thumbnail(city_index, kind):
             west, east   = lon - pad, lon + pad
             south, north = lat - pad, lat + pad
 
-        png_b64 = _make_thumbnail(west, south, east, north, kind, polygon_geojson)
-        _thumb_cache[cache_key] = png_b64
+        render_lock = _get_render_lock(cache_key)
+        with render_lock:
+            if cache_key in _thumb_cache:
+                return jsonify({"png_b64": _thumb_cache[cache_key]})
+            png_b64 = _make_thumbnail(west, south, east, north, kind, polygon_geojson)
+            _thumb_cache[cache_key] = png_b64
         return jsonify({"png_b64": png_b64})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 
 @app.route("/api/clear_cache", methods=["POST"])
 def clear_cache():
     _thumb_cache.clear()
+    with _prefetch_lock:
+        _prefetch_active.clear()
+    while not _prefetch_queue.empty():
+        try:
+            _prefetch_queue.get_nowait()
+            _prefetch_queue.task_done()
+        except Exception:
+            break
     return jsonify({"ok": True})
+
+
+@app.route("/api/prefetch_status")
+def prefetch_status():
+    with _prefetch_lock:
+        n_active = len(_prefetch_active)
+    return jsonify({
+        "cached": len(_thumb_cache),
+        "queued": _prefetch_queue.qsize(),
+        "active": n_active,
+    })
 
 
 @app.route("/api/wiki_search")
@@ -612,4 +771,4 @@ if __name__ == "__main__":
     if DATA_PATH.exists() and not BACKUP_PATH.exists():
         shutil.copy(DATA_PATH, BACKUP_PATH)
         print(f"Backup created: {BACKUP_PATH}")
-    app.run(debug=FLASK_DEBUG, port=FLASK_PORT)
+    app.run(debug=FLASK_DEBUG, port=FLASK_PORT, threaded=True)

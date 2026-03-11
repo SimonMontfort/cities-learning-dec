@@ -19,3 +19,6 @@ data/ntl/ntl.tif filter=lfs diff=lfs merge=lfs -text
 data/case_selection/data_base_clean.xlsx filter=lfs diff=lfs merge=lfs -text
 data/case_selection/case_selection_and_literature.xlsx filter=lfs diff=lfs merge=lfs -text
 data/case_selection/data_base_clean_2.xlsx filter=lfs diff=lfs merge=lfs -text
+.git/lfs/objects/62/10/6210103ea26d1b3e1c00036814257fda208a77597b3599844ce1bc09e89201df filter=lfs diff=lfs merge=lfs -text
+.git/lfs/objects/b7/b5/b7b5d0a5bafbd68f64deda3fa733c20efb937fd519cdc38d6a5a05bab0845817 filter=lfs diff=lfs merge=lfs -text
+.git/lfs/objects/fa/1c/fa1cd2d76a6339c07502b05a16c33e91932f7902a91b42b1a4fef9fd3d211849 filter=lfs diff=lfs merge=lfs -text

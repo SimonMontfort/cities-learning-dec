@@ -807,7 +807,10 @@ async function submitDecision(decision) {
   closeAllPopovers();
   document.getElementById('note-input').value = '';
   updateProgress(data.reviewed, data.total);
-  setTimeout(() => { if (data.next_index != null) loadCity(data.next_index); else showStatus('🎉 All done!', 'success'); }, 450);
+  setTimeout(() => {
+    if (data.next_index !== null && data.next_index !== undefined) loadCity(data.next_index);
+    else showStatus('🎉 All done!', 'success');
+  }, 450);
 }
 
 // Close popovers on outside click
@@ -854,7 +857,6 @@ function navigate(dir) {
   });
 }
 
-document.getElementById('btn-keep').addEventListener('click',      () => submitDecision('keep'));
 document.getElementById('btn-keep').addEventListener('click',      () => activateDecision('keep'));
 document.getElementById('btn-ambiguous').addEventListener('click',  () => activateDecision('ambiguous'));
 document.getElementById('btn-drop').addEventListener('click',       () => activateDecision('drop'));
