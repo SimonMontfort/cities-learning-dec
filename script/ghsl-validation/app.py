@@ -689,9 +689,12 @@ def decide():
         return jsonify({"error": "Save failed"}), 500
 
     cities = load_cities()
-    next_idx = find_next_pending(cities, current_index=city_index)
+    next_pending    = find_next_pending(cities, current_index=city_index)
+    next_sequential = city_index + 1 if city_index + 1 < len(cities) else None
     reviewed, total = get_progress(cities)
-    return jsonify({"success": True, "next_index": next_idx,
+    return jsonify({"success": True,
+                    "next_index":      next_pending,
+                    "next_sequential": next_sequential,
                     "reviewed": reviewed, "total": total})
 
 
@@ -727,9 +730,6 @@ def country_context(country):
     """
     import pandas as pd
 
-    if country in _country_cache:
-        return jsonify(_country_cache[country])
-
     if not INDICATORS_PATH.exists():
         return jsonify({"error": "country_indicators.csv not found — run 06_score_cities.py"}), 404
 
@@ -761,6 +761,16 @@ def country_context(country):
                              cdf["ntl_mean"].dropna().quantile(
                                  [i/20 for i in range(21)]).tolist()],
         }
+        # Per-city decisions so scatter plots can colour-code reviewed points.
+        # Merged from live review CSV (indicators CSV has no decisions).
+        # NOT cached — decisions change as the user codes.
+        review_cities  = load_cities()
+        country_review = {str(c.get("id", "")): c.get("decision", "").strip()
+                          for c in review_cities if c.get("country") == country}
+        ids_list = [str(v) for v in cdf["id"].tolist()] if "id" in cdf.columns else []
+        result["ids"]       = ids_list
+        result["decisions"] = [country_review.get(cid, "") for cid in ids_list]
+
         _country_cache[country] = result
         return jsonify(result)
     except Exception as e:

@@ -182,27 +182,56 @@ def main():
     ).astype("Int64")
     gdf = gdf.to_crs("EPSG:4326")
 
-    # Scores from country_indicators.csv (all 11,422 cities)
+    # Covariates + scores from country_indicators.csv (all 11,422 cities)
+    # country_indicators.csv has: id, country, dev_group, score,
+    #   wsf_built_share, share_urban, ntl_mean
+    # We merge ALL of these so new rows have full covariates for scatter plots.
     indicators_path = OUT_PATH.parent / "country_indicators.csv"
+    INDICATOR_COLS  = ["score", "wsf_built_share", "share_urban", "ntl_mean"]
     if indicators_path.exists():
         ind = pd.read_csv(indicators_path)
         ind["id"] = pd.to_numeric(ind["id"], errors="coerce").astype("Int64")
-        score_lookup = ind.set_index("id")["score"]
-        log.info(f"  Scores loaded        : {len(ind):,} cities from country_indicators.csv")
+        available_ind_cols = [c for c in INDICATOR_COLS if c in ind.columns]
+        gdf = gdf.merge(
+            ind[["id"] + available_ind_cols],
+            on="id", how="left", suffixes=("", "_ind")
+        )
+        # Prefer indicator values over any stale UCDB values for overlapping cols
+        for col in available_ind_cols:
+            ind_col = f"{col}_ind"
+            if ind_col in gdf.columns:
+                gdf[col] = gdf[ind_col].combine_first(gdf.get(col, pd.Series(dtype=float)))
+                gdf.drop(columns=[ind_col], inplace=True)
+        log.info(f"  Indicators loaded    : {len(ind):,} cities from country_indicators.csv")
+        log.info(f"  Indicator cols       : {available_ind_cols}")
     else:
+        # Fallback: pull score only from review CSV
         score_lookup = (
             review[["id", "score"]]
             .dropna(subset=["score"])
             .assign(score=lambda d: pd.to_numeric(d["score"], errors="coerce"))
             .set_index("id")["score"]
         )
-        log.warning("  ⚠  country_indicators.csv not found — using review CSV scores")
+        gdf["score"] = gdf["id"].map(score_lookup)
+        log.warning("  ⚠  country_indicators.csv not found — using review CSV scores, covariates will be missing")
 
-    gdf["score"] = gdf["id"].map(score_lookup)
+    # Fallback score for cities with no indicator entry (uses wsf rank if available)
     if "wsf_built_share" in gdf.columns:
         gdf["score"] = gdf["score"].fillna(
             1 - gdf["wsf_built_share"].rank(pct=True)
         )
+
+    # Compute derived covariates from the merged indicators:
+    #   rural_share, and the three suspicion columns (global ranks).
+    # These mirror 06_score_cities.py compute_score() so the app displays
+    # consistent suspicion bars and scatter positions for new batch cities.
+    if "share_urban" in gdf.columns:
+        gdf["rural_share"]     = 1 - gdf["share_urban"].fillna(0.5)
+        gdf["modis_suspicion"] = gdf["rural_share"].rank(pct=True, na_option="bottom")
+    if "ntl_mean" in gdf.columns:
+        gdf["ntl_suspicion"]   = 1 - gdf["ntl_mean"].fillna(0).rank(pct=True, na_option="bottom")
+    if "wsf_built_share" in gdf.columns:
+        gdf["wsf_suspicion"]   = 1 - gdf["wsf_built_share"].fillna(0).rank(pct=True, na_option="bottom")
 
     n_missing_score = gdf["score"].isna().sum()
     if n_missing_score > 0:

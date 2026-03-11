@@ -202,9 +202,21 @@ def render_chip(data, kind, west, south, east, north, polygon_geojson,
             pass
     if polygon_geojson:
         try:
-            render_polygon, bounds_3857 = polygon_to_3857(polygon_geojson)
-            if bounds_3857:
-                render_w, render_s, render_e, render_n = bounds_3857
+            render_polygon, _ = polygon_to_3857(polygon_geojson)
+            # Reproject the padded bbox (not the tight polygon bounds) so the
+            # padding that was computed in WGS84 is preserved after reprojection.
+            from pyproj import Transformer
+            tr = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+            corners = [
+                tr.transform(west,  south),
+                tr.transform(east,  south),
+                tr.transform(east,  north),
+                tr.transform(west,  north),
+            ]
+            render_w = min(c[0] for c in corners)
+            render_e = max(c[0] for c in corners)
+            render_s = min(c[1] for c in corners)
+            render_n = max(c[1] for c in corners)
         except Exception:
             pass
 

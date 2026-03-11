@@ -42,8 +42,10 @@
     .nav-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text);
                padding: 3px 8px; border-radius: var(--radius); cursor: pointer; font-size: 11px; }
     .nav-btn:hover { background: var(--border); }
+    .nav-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     #existing-badge { display: none; padding: 2px 8px; border-radius: 20px; font-size: 10px;
-                      font-weight: 700; border: 1px solid; white-space: nowrap; }
+                      font-weight: 700; border: 1px solid; white-space: normal;
+                      max-width: 160px; line-height: 1.3; text-align: center; }
     #existing-badge.keep      { border-color: var(--green);  color: var(--green); }
     #existing-badge.drop     { border-color: var(--red);    color: var(--red); }
     #existing-badge.ambiguous { border-color: var(--yellow); color: var(--yellow); }
@@ -260,6 +262,7 @@
   </div>
   <button class="nav-btn" id="btn-prev">← Prev</button>
   <button class="nav-btn" id="btn-next">Next →</button>
+  <button class="nav-btn" id="btn-nav-mode" title="Toggle: skip to next uncoded vs next in list">⏭ Skip coded</button>
   <button class="nav-btn" id="btn-list">☰ List</button>
 </div>
 
@@ -311,6 +314,13 @@
       <div class="ctx-title">NTL vs Urban share</div>
       <canvas id="ctx-scatter-3" width="260" height="160"></canvas>
       <div class="ctx-canvas-label">x: ntl_mean · y: share_urban</div>
+      <div style="display:flex;gap:7px;margin-top:3px;flex-wrap:wrap;">
+        <span style="font-size:8px;color:#4ade80">● keep</span>
+        <span style="font-size:8px;color:#f5c542">● ambiguous</span>
+        <span style="font-size:8px;color:#ef4444">● drop</span>
+        <span style="font-size:8px;color:#556080">● unreviewed</span>
+        <span style="font-size:8px;color:#fff">● current</span>
+      </div>
     </div>
 
     <!-- Percentile bars -->
@@ -447,6 +457,26 @@ let currentCity  = null;
 let selectedCategory = '';
 let map = null, polygonLayer = null;
 let currentLat = 0, currentLon = 0, currentBbox = null;
+let _sortedIndices = [];   // CSV indices in display order (country asc, score desc)
+let _allCities = [];       // full city_list cache
+
+async function _ensureCityList() {
+  if (_allCities.length) return _allCities;
+  _allCities = await fetch('/api/city_list').then(r => r.json());
+  _sortedIndices = [..._allCities]
+    .sort((a, b) => {
+      const cc = (a.country || '').localeCompare(b.country || '');
+      if (cc !== 0) return cc;
+      return parseFloat(b.score || 0) - parseFloat(a.score || 0);
+    })
+    .map(c => c.index);
+  return _allCities;
+}
+
+// Position of currentIndex in _sortedIndices (−1 if not found)
+function _sortedPos() {
+  return _sortedIndices.indexOf(currentIndex);
+}
 
 // ── Map ──
 function initMap() {
@@ -747,6 +777,18 @@ function updateProgress(reviewed, total) {
 //                  'Other' sub-reason additionally requires note field
 
 let _pendingDecision = '';
+let _navSkipCoded = true;  // true = skip to next uncoded; false = next in list
+
+function _updateNavModeBtn() {
+  const btn = document.getElementById('btn-nav-mode');
+  if (_navSkipCoded) {
+    btn.textContent = '⏭ Skip coded';
+    btn.classList.add('active');
+  } else {
+    btn.textContent = '⏩ Next in list';
+    btn.classList.remove('active');
+  }
+}
 
 function closeAllPopovers() {
   document.querySelectorAll('.subreason-popover').forEach(p => p.classList.remove('open'));
@@ -807,8 +849,27 @@ async function submitDecision(decision) {
   closeAllPopovers();
   document.getElementById('note-input').value = '';
   updateProgress(data.reviewed, data.total);
+
+  // Refresh scatter for the current country so new decision appears immediately
+  if (window._currentCity) refreshCountryScatter(window._currentCity);
+
+  // Determine next city: either next uncoded (skip mode) or next in sorted list
+  let nextIdx;
+  if (_navSkipCoded) {
+    nextIdx = data.next_index;   // server-computed: next city with no decision
+  } else {
+    // Next position in sorted display order
+    await _ensureCityList();
+    const pos = _sortedPos();
+    if (pos !== -1 && pos + 1 < _sortedIndices.length) {
+      nextIdx = _sortedIndices[pos + 1];
+    } else {
+      nextIdx = null;
+    }
+  }
+
   setTimeout(() => {
-    if (data.next_index !== null && data.next_index !== undefined) loadCity(data.next_index);
+    if (nextIdx !== null && nextIdx !== undefined) loadCity(nextIdx);
     else showStatus('🎉 All done!', 'success');
   }, 450);
 }
@@ -851,10 +912,11 @@ document.addEventListener('keydown', e => {
   }
 });
 
-function navigate(dir) {
-  fetch('/api/city_list').then(r => r.json()).then(list => {
-    loadCity(Math.max(0, Math.min(list.length-1, currentIndex+dir)));
-  });
+async function navigate(dir) {
+  await _ensureCityList();
+  const pos    = _sortedPos();
+  const newPos = Math.max(0, Math.min(_sortedIndices.length - 1, (pos === -1 ? 0 : pos) + dir));
+  loadCity(_sortedIndices[newPos]);
 }
 
 document.getElementById('btn-keep').addEventListener('click',      () => activateDecision('keep'));
@@ -870,12 +932,18 @@ document.querySelectorAll('.sub-btn').forEach(btn => {
 });
 document.getElementById('btn-prev').addEventListener('click',      () => navigate(-1));
 document.getElementById('btn-next').addEventListener('click',      () => navigate(1));
+document.getElementById('btn-nav-mode').addEventListener('click', () => {
+  _navSkipCoded = !_navSkipCoded;
+  _updateNavModeBtn();
+});
+_updateNavModeBtn();
 
 document.getElementById('btn-list').addEventListener('click', async () => {
   document.getElementById('list-modal').style.display = 'block';
-  const list = await fetch('/api/city_list').then(r => r.json());
+  await _ensureCityList();
+  const sorted = _sortedIndices.map(i => _allCities[i]);
   const SIG = {green:'🟢', yellow:'🟡', red:'🔴', '':''};
-  document.getElementById('city-list-container').innerHTML = list.map(c => `
+  document.getElementById('city-list-container').innerHTML = sorted.map(c => `
     <div onclick="loadCity(${c.index}); document.getElementById('list-modal').style.display='none';"
          style="display:flex;align-items:center;gap:8px;padding:5px 8px;cursor:pointer;border-bottom:1px solid var(--border);"
          onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
@@ -948,6 +1016,27 @@ function updateCtxDecisions() {
     .catch(() => {});
 }
 
+// Refresh scatter for current city without reloading the whole context panel
+function refreshCountryScatter(city) {
+  if (!city || !city.country) return;
+  fetch(`/api/country_context/${encodeURIComponent(city.country)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) return;
+      _ctxData = data;
+      renderContextScatters(data, city);
+    })
+    .catch(() => {});
+}
+
+// Decision colours for scatter plots
+const DECISION_COLOR = {
+  keep:      '#4ade80',   // green
+  drop:      '#ef4444',   // red
+  ambiguous: '#f5c542',   // yellow
+  '':        '#364b8a',   // unreviewed (blue-grey)
+};
+
 function renderContextScatters(data, city) {
   // Three scatter plots: [xKey, yKey, canvasId, cityXKey, cityYKey]
   const plots = [
@@ -955,6 +1044,8 @@ function renderContextScatters(data, city) {
     ['ntl_mean',    'wsf',      'ctx-scatter-2', 'ntl_mean',       'wsf_built_share'],
     ['ntl_mean',    'share_urban', 'ctx-scatter-3', 'ntl_mean',    'share_urban'],
   ];
+
+  const decisions = data.decisions || [];
 
   plots.forEach(([xKey, yKey, canvasId, cityXKey, cityYKey]) => {
     const canvas = document.getElementById(canvasId);
@@ -966,7 +1057,7 @@ function renderContextScatters(data, city) {
     const ph = H - PAD.t - PAD.b;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#ccd4e3';
+    ctx.fillStyle = '#1a1d27';
     ctx.fillRect(0, 0, W, H);
 
     const xs = data[xKey] || [];
@@ -976,16 +1067,17 @@ function renderContextScatters(data, city) {
 
     const valid = [];
     for (let i = 0; i < n; i++) {
-      if (xs[i] !== null && ys[i] !== null) valid.push([xs[i], ys[i]]);
+      if (xs[i] !== null && ys[i] !== null)
+        valid.push([xs[i], ys[i], decisions[i] || '']);
     }
     if (!valid.length) return;
 
     const xVals = valid.map(p => p[0]);
     const yVals = valid.map(p => p[1]);
-	const xMin = 0, xMax = Math.max(...xVals) || 1;
-	const yMin = 0, yMax = Math.max(...yVals) || 1;
-	function toCanvasX(v) { return PAD.l + v / xMax * pw; }
-	function toCanvasY(v) { return PAD.t + ph - v / yMax * ph; }
+    const xMin = 0, xMax = Math.max(...xVals) || 1;
+    const yMin = 0, yMax = Math.max(...yVals) || 1;
+    function toCanvasX(v) { return PAD.l + v / xMax * pw; }
+    function toCanvasY(v) { return PAD.t + ph - v / yMax * ph; }
 
     // Grid lines
     ctx.strokeStyle = '#1e2235';
@@ -1005,37 +1097,41 @@ function renderContextScatters(data, city) {
     ctx.lineTo(PAD.l + pw, PAD.t + ph);
     ctx.stroke();
 
-    // Axis labels (min/max)
+    // Axis labels
     ctx.fillStyle = '#556080';
     ctx.font = '7px monospace';
     ctx.textAlign = 'left';
     ctx.fillText(xMin.toFixed(1), PAD.l, H - 2);
     ctx.textAlign = 'right';
     ctx.fillText(xMax.toFixed(1), PAD.l + pw, H - 2);
-    ctx.textAlign = 'right';
     ctx.fillText(yMax.toFixed(2), PAD.l - 2, PAD.t + 5);
     ctx.fillText(yMin.toFixed(2), PAD.l - 2, PAD.t + ph);
 
-    // Background points
-    ctx.fillStyle = '#364b8a';
-    valid.forEach(([x, y]) => {
-      ctx.beginPath();
-      ctx.arc(toCanvasX(x), toCanvasY(y), 1.8, 0, Math.PI * 2);
-      ctx.fill();
+    // Draw unreviewed first (behind), then reviewed on top
+    const order = ['', 'keep', 'ambiguous', 'drop'];
+    order.forEach(dec => {
+      valid.filter(p => p[2] === dec).forEach(([x, y, d]) => {
+        const color = DECISION_COLOR[d] || DECISION_COLOR[''];
+        const r = d ? 2.5 : 1.8;
+        ctx.beginPath();
+        ctx.arc(toCanvasX(x), toCanvasY(y), r, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = d ? 0.85 : 0.5;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      });
     });
 
-    // Current city dot - use city-object keys, not country-data keys
+    // Current city — bright white ring
     const cx = city[cityXKey], cy = city[cityYKey];
     if (cx !== null && cx !== undefined && cy !== null && cy !== undefined) {
-      // Halo
       ctx.beginPath();
-      ctx.arc(toCanvasX(cx), toCanvasY(cy), 5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,60,60,0.25)';
+      ctx.arc(toCanvasX(cx), toCanvasY(cy), 6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.fill();
-      // Dot
       ctx.beginPath();
-      ctx.arc(toCanvasX(cx), toCanvasY(cy), 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#ff3333';
+      ctx.arc(toCanvasX(cx), toCanvasY(cy), 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
       ctx.fill();
     }
   });
@@ -1073,7 +1169,7 @@ function renderPctBars(data, city) {
 }
 
 initMap();
-loadCity(currentIndex);
+_ensureCityList().then(() => loadCity(currentIndex));
 </script>
 </body>
 </html>
