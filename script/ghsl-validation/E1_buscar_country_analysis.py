@@ -55,10 +55,14 @@ TABLE_DIR  = "data/ghsl_appraisal"
 OUT_CSV    = os.path.join(TABLE_DIR, "country_stopping_summary.csv")
 
 MIN_REVIEWED  = 10
-MIN_FPS       = 3
+MIN_FPS       = 0
 RECALL_TARGET = 0.90   # keep in sync with E2
 CONFIDENCE    = 0.90   # keep in sync with E2
 P_STOP        = round(1 - CONFIDENCE, 10)   # 0.10
+
+# Countries in these groups are NOT expanded by E3.
+# E1 still computes statistics for them but marks them accordingly.
+SKIP_GROUPS   = {"High income"}
 
 GROUP_COLORS = {
     "Low income":    "#e05c3a",
@@ -73,10 +77,20 @@ os.makedirs(TABLE_DIR, exist_ok=True)
 
 # -- Helpers -------------------------------------------------------------------
 
-def strip_non_ascii(s):
-    if isinstance(s, str):
-        return re.sub(r'[^\x00-\x7F]', '', s).strip()
-    return s
+def normalize_country(s):
+    """
+    Transliterate accented characters to their ASCII base letters using NFD
+    decomposition: é→e, ç→c, ã→a, ô→o, etc.  This ensures country names like
+    'Côte d'Ivoire', 'México', 'São Tomé and Príncipe' match their UCDB
+    counterparts stored without diacritics in GC_CNT_GAD_2025.
+    """
+    import unicodedata
+    if not isinstance(s, str):
+        return s
+    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii").strip()
+
+# Keep old name as alias so any other callers still work
+strip_non_ascii = normalize_country
 
 
 from pipeline_utils import compute_bias, make_labels
@@ -163,10 +177,17 @@ print(f"  omega method  : within-country score percentile odds ratio")
 print()
 
 results = []
-n_stopped_biased = 0
-n_skipped        = 0
+n_stopped_biased    = 0
+n_skipped           = 0
+n_skip_group        = 0
+n_insufficient      = 0
 
-for country in sorted(df["country"].dropna().unique()):
+# All countries: union of queue countries + UCDB countries
+all_countries = sorted(
+    set(df["country"].dropna().unique()) | set(ucdb["country_raw"].dropna().unique())
+)
+
+for country in all_countries:
     cdf        = df[df["country"] == country].copy()
     c_reviewed = cdf[cdf["decision"] != ""]
 
@@ -174,19 +195,44 @@ for country in sorted(df["country"].dropna().unique()):
     n_rev     = len(c_reviewed)
     n_fps_c   = (c_reviewed["decision"] != "keep").sum()
     n_kept_c  = (c_reviewed["decision"] == "keep").sum()
-    dev_group = cdf["dev_group"].dropna().iloc[0] if cdf["dev_group"].notna().any() else "-"
 
-    country_clean = strip_non_ascii(country)
-    n_ucdb_c = int(ucdb_country_n.get(country_clean, n_queue))
+    # dev_group: from queue rows if available, else UCDB raw lookup
+    if cdf["dev_group"].notna().any():
+        dev_group = cdf["dev_group"].dropna().iloc[0]
+    else:
+        dev_group = "-"
 
-    if n_ucdb_c < n_queue:
+    country_norm = normalize_country(country)
+    n_ucdb_c = int(ucdb_country_n.get(country_norm, n_queue if n_queue > 0 else 0))
+
+    if n_queue > 0 and n_ucdb_c < n_queue:
         print(f"  WARNING {country}: n_ucdb={n_ucdb_c} < n_queue={n_queue} -- using n_queue")
         n_ucdb_c = n_queue
 
-    has_enough = n_rev >= MIN_REVIEWED and n_fps_c >= MIN_FPS
+    # Determine whether this country is in the stopping pipeline
+    in_pipeline = dev_group not in SKIP_GROUPS
+
+    has_enough = (n_rev >= MIN_REVIEWED) and (n_fps_c >= MIN_FPS)
     omega = p_cons = p_biased = None
 
-    if has_enough:
+    if not in_pipeline:
+        # High income (or other skip groups): compute omega/p for information
+        # but mark as not in pipeline and do NOT count toward stopped/skipped
+        n_skip_group += 1
+        if has_enough:
+            labels   = make_labels(c_reviewed)
+            omega    = compute_bias(c_reviewed)
+            p_cons   = calculate_h0(labels, N=n_ucdb_c, recall_target=RECALL_TARGET, bias=1)
+            p_biased = calculate_h0(labels, N=n_ucdb_c, recall_target=RECALL_TARGET, bias=omega)
+            p_cons   = round(float(p_cons),   4) if p_cons   is not None else None
+            p_biased = round(float(p_biased), 4) if p_biased is not None else None
+        # skip console line — high-income countries are expected/intentional
+    elif not has_enough:
+        n_insufficient += 1
+        if n_rev > 0 or n_queue > 0:
+            # Only print countries that have some queue presence
+            pass  # silent; summary counts cover this
+    else:
         labels   = make_labels(c_reviewed)
         omega    = compute_bias(c_reviewed)
         p_cons   = calculate_h0(labels, N=n_ucdb_c, recall_target=RECALL_TARGET, bias=1)
@@ -199,18 +245,32 @@ for country in sorted(df["country"].dropna().unique()):
         if stopped_b:
             n_stopped_biased += 1
 
-        sc = "STOP" if stopped_c else "continue"
-        sb = "STOP" if stopped_b else "continue"
+        sc = "STOP    " if stopped_c else "continue"
+        sb = "STOP    " if stopped_b else "continue"
         print(f"  {country:<35} omega={omega:>5.1f}  "
               f"p_cons={str(p_cons)[:6]:>6} [{sc}]  "
               f"p_bias={str(p_biased)[:6]:>6} [{sb}]  "
-              f"({n_fps_c} FPs / {n_rev} rev / {n_ucdb_c} total)")
+              f"({n_fps_c} FPs / {n_rev} rev of {n_queue} queued / {n_ucdb_c} UCDB total)")
+
+    # Stopping columns: only meaningful for in-pipeline countries with enough data
+    if in_pipeline and has_enough:
+        stopped_b = p_biased is not None and p_biased <= P_STOP
+        stopped_c = p_cons   is not None and p_cons   <= P_STOP
+        can_stop_b = stopped_b
+        can_stop_c = stopped_c
+        note_val   = ""
+    elif not in_pipeline:
+        can_stop_b = can_stop_c = False
+        note_val   = f"not_in_pipeline ({dev_group})"
     else:
+        can_stop_b = can_stop_c = False
+        note_val   = f"insufficient_data (<{MIN_REVIEWED} reviewed or <{MIN_FPS} FPs)"
         n_skipped += 1
 
     results.append({
         "country":               country,
         "dev_group":             dev_group,
+        "in_stopping_pipeline":  in_pipeline,
         "n_ucdb_total":          n_ucdb_c,
         "n_queue":               n_queue,
         "n_reviewed":            n_rev,
@@ -219,44 +279,55 @@ for country in sorted(df["country"].dropna().unique()):
         "n_fps":                 n_fps_c,
         "n_kept":                n_kept_c,
         "omega":                 omega,
-        "p_conservative":        p_cons,
-        "p_biased":              p_biased,
-        "can_stop_conservative": p_cons   is not None and p_cons   <= P_STOP,
-        "can_stop_biased":       p_biased is not None and p_biased <= P_STOP,
-        "note": "" if has_enough else f"<{MIN_REVIEWED} reviewed or <{MIN_FPS} FPs",
+        # p-values: NA for skip-group countries (not in pipeline)
+        "p_conservative":        p_cons   if in_pipeline else None,
+        "p_biased":              p_biased if in_pipeline else None,
+        "can_stop_conservative": can_stop_c if in_pipeline else None,
+        "can_stop_biased":       can_stop_b if in_pipeline else None,
+        "note":                  note_val,
     })
 
 results_df = pd.DataFrame(results).sort_values(
-    ["can_stop_biased", "p_biased", "country"],
-    ascending=[False, True, True],
+    ["in_stopping_pipeline", "can_stop_biased", "p_biased", "country"],
+    ascending=[False, False, True, True],
     na_position="last"
-)
+).reset_index(drop=True)
 
 # -- Summary checks ------------------------------------------------------------
 
-n_with_data = results_df["omega"].notna().sum()
+pipeline_df   = results_df[results_df["in_stopping_pipeline"] == True]
+skipgrp_df    = results_df[results_df["in_stopping_pipeline"] == False]
+n_with_data   = pipeline_df["omega"].notna().sum()
+n_with_data_sg= skipgrp_df["omega"].notna().sum()
+
 print()
 print("-- E1 Summary checks -------------------------------------------------")
-print(f"  Countries analysed         : {len(results_df):,}")
-print(f"  With sufficient data       : {n_with_data:,}")
-print(f"  Stopped (biased urn)       : {n_stopped_biased:,}")
-print(f"  Skipped (too few reviewed) : {n_skipped:,}")
+print(f"  Total countries in output  : {len(results_df):,}")
+print(f"  ── In stopping pipeline ({', '.join(sorted(set(results_df['dev_group'].unique()) - SKIP_GROUPS - {'-'}))} etc.)")
+print(f"     Countries              : {len(pipeline_df):,}")
+print(f"     With sufficient data   : {n_with_data:,}")
+print(f"     Stopped (biased urn)   : {n_stopped_biased:,}")
+print(f"     Insufficient data      : {n_skipped:,}")
+print(f"  ── Not in pipeline ({', '.join(sorted(SKIP_GROUPS))})")
+print(f"     Countries              : {len(skipgrp_df):,}")
+print(f"     With sufficient data   : {n_with_data_sg:,}  (stats computed, p-vals set to NA in CSV)")
 
-stopped_check = results_df[results_df["can_stop_biased"]]
+# Checks apply only to in-pipeline countries
+stopped_check = pipeline_df[pipeline_df["can_stop_biased"] == True]
 bad_stop = stopped_check[stopped_check["p_biased"] > P_STOP]
 if not bad_stop.empty:
     print(f"  FAIL: {len(bad_stop)} stopped countries have p_biased > {P_STOP}:")
     print(bad_stop[["country", "p_biased"]].to_string(index=False))
     sys.exit(1)
-print(f"  OK  All {len(stopped_check)} stopped countries have p_biased <= {P_STOP}")
+print(f"  OK  All {len(stopped_check)} stopped pipeline countries have p_biased <= {P_STOP}")
 
 for col in ["p_conservative", "p_biased"]:
-    bad = results_df[results_df[col].notna() &
-                     ((results_df[col] < 0) | (results_df[col] > 1))]
+    bad = pipeline_df[pipeline_df[col].notna() &
+                      ((pipeline_df[col] < 0) | (pipeline_df[col] > 1))]
     if not bad.empty:
         print(f"  FAIL: {col} out of [0,1] for: {bad['country'].tolist()}")
         sys.exit(1)
-print(f"  OK  All p-values in [0, 1]")
+print(f"  OK  All pipeline p-values in [0, 1]")
 
 bad_omega = results_df[results_df["omega"].notna() & (results_df["omega"] < 1)]
 if not bad_omega.empty:
@@ -264,15 +335,15 @@ if not bad_omega.empty:
     sys.exit(1)
 print(f"  OK  All omega >= 1")
 
-omega_check = results_df[
-    results_df["p_biased"].notna() & results_df["p_conservative"].notna() &
-    (results_df["p_biased"] > results_df["p_conservative"] + 0.01)
+omega_check = pipeline_df[
+    pipeline_df["p_biased"].notna() & pipeline_df["p_conservative"].notna() &
+    (pipeline_df["p_biased"] > pipeline_df["p_conservative"] + 0.01)
 ]
 if not omega_check.empty:
-    print(f"  WARNING: {len(omega_check)} countries where p_biased > p_conservative:")
+    print(f"  WARNING: {len(omega_check)} pipeline countries where p_biased > p_conservative:")
     print(omega_check[["country", "omega", "p_conservative", "p_biased"]].to_string(index=False))
 else:
-    print(f"  OK  p_biased <= p_conservative for all countries")
+    print(f"  OK  p_biased <= p_conservative for all pipeline countries")
 
 results_df["_check_sum"] = results_df["n_fps"] + results_df["n_kept"]
 bad_sum = results_df[
@@ -285,11 +356,13 @@ if not bad_sum.empty:
 print(f"  OK  n_fps + n_kept = n_reviewed for all countries")
 results_df.drop(columns=["_check_sum"], inplace=True)
 
-# omega direction: if omega > 1, FP mean within-country rank > kept mean rank
+# omega direction check (all countries that have omega computed)
 omega_sanity_fails = []
 for country in results_df[results_df["omega"].notna()]["country"]:
     cdf   = df[df["country"] == country]
     c_rev = cdf[cdf["decision"] != ""]
+    if c_rev.empty:
+        continue
     pct   = c_rev["score"].rank(pct=True)
     fp_mean   = pct[c_rev["decision"] != "keep"].mean()
     kept_mean = pct[c_rev["decision"] == "keep"].mean()
@@ -317,10 +390,120 @@ print(f"\n  Saved: {OUT_CSV}  ({len(results_df)} rows)")
 
 print("\n[4/4] Generating plots...")
 
-# -- Two-panel overview: p-value (left) + omega (right) -----------------------
+# ── Helper: group-order for consistent bar ordering ───────────────────────────
+GROUP_ORDER = ["Low income", "Lower Middle", "Upper Middle", "High income", "-"]
+
+def group_sort_key(g):
+    return GROUP_ORDER.index(g) if g in GROUP_ORDER else len(GROUP_ORDER)
+
+
+# ── Plot A+B: Review coverage and FP share by development group ───────────────
+#
+#   Panel A: Total cities in UCDB vs reviewed, stacked bars by dev group
+#   Panel B: FP share of reviewed cities by dev group
+#   Both panels mark High-income groups with hatching ("not in stopping pipeline")
+
+cov_rows = []
+for grp in GROUP_ORDER:
+    grp_df = results_df[results_df["dev_group"] == grp]
+    if grp_df.empty:
+        continue
+    n_ucdb_grp   = grp_df["n_ucdb_total"].sum()
+    n_rev_grp    = grp_df["n_reviewed"].sum()
+    n_fps_grp    = grp_df["n_fps"].sum()
+    n_kept_grp   = grp_df["n_kept"].sum()
+    in_pipeline  = grp not in SKIP_GROUPS
+    cov_rows.append({
+        "group":        grp,
+        "n_ucdb":       int(n_ucdb_grp),
+        "n_reviewed":   int(n_rev_grp),
+        "n_unreviewed": int(n_ucdb_grp - n_rev_grp),
+        "n_fps":        int(n_fps_grp),
+        "n_kept":       int(n_kept_grp),
+        "fp_share":     n_fps_grp / n_rev_grp if n_rev_grp > 0 else 0,
+        "in_pipeline":  in_pipeline,
+        "color":        GROUP_COLORS.get(grp, "#888"),
+    })
+
+cov_df = pd.DataFrame(cov_rows)
+
+fig_cov, (ax_a, ax_b) = plt.subplots(
+    1, 2, figsize=(13, 5),
+    gridspec_kw={"width_ratios": [2.2, 1], "wspace": 0.32}
+)
+
+y_pos  = np.arange(len(cov_df))
+height = 0.55
+
+for i, row in cov_df.iterrows():
+    hatch = "//" if not row["in_pipeline"] else None
+    color = row["color"]
+
+    # Reviewed bar (solid)
+    ax_a.barh(i, row["n_reviewed"],  height=height,
+              color=color, alpha=0.85, hatch=hatch, edgecolor="white",
+              label=row["group"] if i == 0 else "_nolegend_")
+    # Unreviewed extension (lighter)
+    ax_a.barh(i, row["n_unreviewed"], height=height,
+              left=row["n_reviewed"],
+              color=color, alpha=0.25, hatch=hatch, edgecolor="white")
+
+    # Annotation: reviewed count
+    ax_a.text(row["n_reviewed"] + row["n_unreviewed"] * 0.02 + 30, i,
+              f"{row['n_reviewed']:,} / {row['n_ucdb']:,}",
+              va="center", fontsize=8, color="#333")
+
+    # Panel B: FP share bar
+    ax_b.barh(i, row["fp_share"] * 100, height=height,
+              color=color, alpha=0.85, hatch=hatch, edgecolor="white")
+    ax_b.text(row["fp_share"] * 100 + 0.4, i,
+              f"{row['fp_share']*100:.1f}%  ({row['n_fps']:,} FP)",
+              va="center", fontsize=8, color="#333")
+
+ax_a.set_yticks(y_pos)
+ax_a.set_yticklabels(cov_df["group"].tolist(), fontsize=9)
+ax_a.set_xlabel("Cities", fontsize=9)
+ax_a.set_title("Cities reviewed vs total UCDB\n(solid = reviewed, faded = unreviewed)", fontsize=9)
+ax_a.grid(axis="x", alpha=0.2)
+
+ax_b.set_yticks(y_pos)
+ax_b.set_yticklabels(cov_df["group"].tolist(), fontsize=9)
+ax_b.set_xlabel("False positive share of reviewed (%)", fontsize=9)
+ax_b.set_title("FP share of reviewed cities\nby development group", fontsize=9)
+ax_b.set_xlim(0, max(cov_df["fp_share"].max() * 130, 5))
+ax_b.grid(axis="x", alpha=0.2)
+
+# Shared legend
+patch_handles = [
+    Patch(facecolor=GROUP_COLORS[g], label=g,
+          hatch="//" if g in SKIP_GROUPS else None)
+    for g in GROUP_ORDER if g in GROUP_COLORS and g != "-"
+]
+patch_handles += [
+    Patch(facecolor="#aaa", hatch="//", label="Not in stopping pipeline"),
+    Patch(facecolor="#aaa", hatch=None,  label="In stopping pipeline"),
+]
+ax_a.legend(handles=patch_handles, fontsize=7.5, loc="lower right",
+            title="Development group", title_fontsize=7.5)
+
+plt.suptitle("Review coverage and false positive rates by development group",
+             fontsize=11, fontweight="bold")
+plt.tight_layout()
+
+coverage_path = os.path.join(PLOT_DIR, "review_coverage_by_dev_group.png")
+plt.savefig(coverage_path, dpi=150, bbox_inches="tight")
+plt.close()
+print(f"  Saved: {coverage_path}")
+
+
+# ── Two-panel stopping overview: p-value (left) + omega (right) ───────────────
+# Only include in-pipeline countries that have computed omega (sufficient data)
 
 plot_df = (
-    results_df[results_df["omega"].notna()]
+    results_df[
+        (results_df["in_stopping_pipeline"] == True) &
+        results_df["omega"].notna()
+    ]
     .sort_values("p_biased", na_position="last")
     .reset_index(drop=True)
 )
@@ -362,7 +545,8 @@ ax_p.grid(axis="x", alpha=0.2)
 ax_p.set_title(
     f"Stopping criterion  |  {RECALL_TARGET*100:.0f}% recall  |  "
     f"{CONFIDENCE*100:.0f}% confidence\n"
-    f"p={P_STOP} threshold (dashed)  |  {n_stopped_biased} countries stopped",
+    f"p={P_STOP} threshold (dashed)  |  {n_stopped_biased} countries stopped  "
+    f"|  High-income countries excluded",
     fontsize=9
 )
 
@@ -374,14 +558,16 @@ ax_w.set_title(
     fontsize=9
 )
 
-handles = [Patch(facecolor=c, label=g) for g, c in GROUP_COLORS.items() if g != "-"]
+handles = [Patch(facecolor=c, label=g) for g, c in GROUP_COLORS.items()
+           if g not in ("-", "High income")]
 handles += [
     plt.Line2D([0], [0], color="black", linestyle="--", label=f"p={P_STOP} (stop)"),
     plt.Line2D([0], [0], color="black", linestyle=":",  label="omega=1 (no bias)")
 ]
 ax_p.legend(handles=handles, fontsize=7.5, loc="lower right")
 
-plt.suptitle("Per-country buscar analysis overview", fontsize=11, fontweight="bold")
+plt.suptitle("Per-country buscar analysis — stopping pipeline countries only",
+             fontsize=11, fontweight="bold")
 plt.tight_layout()
 
 overview_path = os.path.join(PLOT_DIR, "overview_stopping_criteria.png")
@@ -389,9 +575,84 @@ plt.savefig(overview_path, dpi=150, bbox_inches="tight")
 plt.close()
 print(f"  Saved: {overview_path}")
 
-# -- Recall frontier grid ------------------------------------------------------
+# ── Overview stopping criteria — split by development group ───────────────────
+# Same two-panel layout as above but one file per dev group so panels are
+# legible even when a group has many countries.
 
-valid = [r for r in results if r["omega"] is not None]
+overview_groups = [g for g in GROUP_ORDER
+                   if g not in SKIP_GROUPS and g != "-"
+                   and results_df[
+                       (results_df["in_stopping_pipeline"] == True) &
+                       (results_df["dev_group"] == g) &
+                       results_df["omega"].notna()
+                   ].shape[0] > 0]
+
+for grp in overview_groups:
+    grp_df = (
+        results_df[
+            (results_df["in_stopping_pipeline"] == True) &
+            (results_df["dev_group"] == grp) &
+            results_df["omega"].notna()
+        ]
+        .sort_values("p_biased", na_position="last")
+        .reset_index(drop=True)
+    )
+    ng = len(grp_df)
+    if ng == 0:
+        continue
+
+    fig_h_g = max(4, ng * 0.42 + 1.5)
+    fig_g, (ax_pg, ax_wg) = plt.subplots(
+        1, 2, figsize=(16, fig_h_g), sharey=True,
+        gridspec_kw={"width_ratios": [2, 1], "wspace": 0.04}
+    )
+    yg = np.arange(ng)
+    color_g = GROUP_COLORS.get(grp, "#888")
+    n_stopped_g = (grp_df["can_stop_biased"] == True).sum()
+
+    for i, row in grp_df.iterrows():
+        ax_pg.barh(i, row["p_biased"], height=0.65, color=color_g, alpha=0.85)
+        ax_wg.barh(i, row["omega"],    height=0.65, color=color_g, alpha=0.75)
+        ax_pg.text(
+            min(row["p_biased"] + 0.01, 1.02), i,
+            f"{int(row['n_fps'])} FP / {int(row['n_reviewed'])} rev of {int(row['n_queue'])} q / {int(row['n_ucdb_total'])} UCDB",
+            va="center", fontsize=6.5, color="#444"
+        )
+
+    ax_pg.axvline(P_STOP, color="black", linestyle="--", linewidth=1.3)
+    ax_wg.axvline(1.0,    color="black", linestyle=":",  linewidth=0.9)
+    ax_pg.set_yticks(yg)
+    ax_pg.set_yticklabels(grp_df["country"].tolist(), fontsize=8)
+    ax_pg.set_xlabel("p-value  (biased urn)  <--  lower = more confident", fontsize=9)
+    ax_pg.set_xlim(0, 1.35)
+    ax_pg.grid(axis="x", alpha=0.2)
+    ax_pg.set_title(
+        f"Stopping criterion  ·  {grp}\n"
+        f"{RECALL_TARGET*100:.0f}% recall  ·  {CONFIDENCE*100:.0f}% confidence  ·  "
+        f"p={P_STOP} threshold  ·  {n_stopped_g}/{ng} stopped",
+        fontsize=9
+    )
+    ax_wg.set_xlabel("omega  (within-country odds ratio)", fontsize=9)
+    ax_wg.set_xlim(0, max(grp_df["omega"].max() * 1.2, 3))
+    ax_wg.grid(axis="x", alpha=0.2)
+    ax_wg.set_title("Scorer bias\nomega > 1 = FPs at top of ranking", fontsize=9)
+
+    plt.suptitle(f"Buscar analysis — {grp}", fontsize=11, fontweight="bold")
+    plt.tight_layout()
+
+    grp_slug = grp.lower().replace(" ", "_").replace("/", "_")
+    grp_path = os.path.join(PLOT_DIR, f"overview_stopping_{grp_slug}.png")
+    plt.savefig(grp_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {grp_path}")
+
+
+# ── Recall frontier grid — countries with n_fps > 0 only ─────────────────────
+
+valid = [r for r in results
+         if r["omega"] is not None
+         and r.get("in_stopping_pipeline", True)
+         and r["n_fps"] > 0]
 ncols = 4
 nrows = -(-len(valid) // ncols)
 
@@ -409,8 +670,8 @@ for idx, row in enumerate(valid):
     labels  = make_labels(cdf[cdf["decision"] != ""])
 
     try:
-        fc = recall_frontier(labels, N=n_ucdb, bias=1,    plot=False)
-        fb = recall_frontier(labels, N=n_ucdb, bias=omega, plot=False)
+        fc = recall_frontier(labels, N=n_ucdb, bias=1,     plot=False)
+        fb = recall_frontier(labels, N=n_ucdb, bias=omega,  plot=False)
         ax.plot(fc["recall_target"], fc["p"], "-",
                 color="#4f8eff", linewidth=1.2, alpha=0.7, label="omega=1")
         if omega > 1.01:
@@ -438,7 +699,8 @@ for idx in range(len(valid), len(axes_flat)):
     axes_flat[idx].set_visible(False)
 
 fig.suptitle(
-    f"Recall frontiers by country  |  {RECALL_TARGET*100:.0f}% recall target\n"
+    f"Recall frontiers by country  |  {RECALL_TARGET*100:.0f}% recall target  |  "
+    f"countries with ≥1 FP only\n"
     f"dashed = p={P_STOP}  |  blue = conservative (omega=1)  |  orange = biased urn",
     fontsize=10
 )

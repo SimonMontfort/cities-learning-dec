@@ -167,7 +167,7 @@ def _load_cities_with_fieldnames():
     return cities, fieldnames
 
 
-def save_decision(city_index, decision, category, note):
+def save_decision(city_index, decision, category, note):    
     with _csv_lock:
         cities, fieldnames = _load_cities_with_fieldnames()
         if city_index < 0 or city_index >= len(cities):

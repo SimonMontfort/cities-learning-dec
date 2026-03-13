@@ -49,10 +49,16 @@ except ModuleNotFoundError:
 
 import re
 
-def strip_non_ascii(s):
-    if isinstance(s, str):
-        return re.sub(r'[^\x00-\x7F]', '', s).strip()
-    return s
+import unicodedata
+
+def normalize_country(s):
+    """NFD transliteration: é→e, ç→c, ô→o, etc.  Matches E1's country normalizer."""
+    if not isinstance(s, str):
+        return s
+    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii").strip()
+
+# Keep old name as alias
+strip_non_ascii = normalize_country
 
 try:
     from pipeline_utils import (
@@ -461,6 +467,54 @@ class TestCountryCoverage(unittest.TestCase):
         pct_uncovered = 100 * len(uncovered) / max(len(eligible), 1)
         self.assertLess(pct_uncovered, 20,
             f"{pct_uncovered:.1f}% of low/middle income countries not covered")
+
+    def test_in_stopping_pipeline_column_present(self):
+        """country_stopping_summary.csv must have an in_stopping_pipeline column."""
+        self.assertIn("in_stopping_pipeline", self.stop_df.columns,
+            "in_stopping_pipeline column missing from country_stopping_summary.csv")
+
+    def test_in_stopping_pipeline_values(self):
+        """in_stopping_pipeline must be boolean (True/False) for all rows."""
+        col = self.stop_df["in_stopping_pipeline"]
+        # pandas may read booleans as bool or as string "True"/"False"
+        valid_bool = col.isin([True, False, "True", "False"])
+        self.assertTrue(valid_bool.all(),
+            f"Unexpected in_stopping_pipeline values: "
+            f"{col[~valid_bool].unique().tolist()}")
+
+    def test_high_income_not_in_stopping_pipeline(self):
+        """All High income rows must have in_stopping_pipeline == False."""
+        hi_rows = self.stop_df[self.stop_df["dev_group"] == "High income"]
+        if hi_rows.empty:
+            return  # no high-income rows -- nothing to check
+        bad = hi_rows[hi_rows["in_stopping_pipeline"].astype(str) != "False"]
+        self.assertEqual(len(bad), 0,
+            f"{len(bad)} High income countries have in_stopping_pipeline=True: "
+            f"{bad['country'].tolist()[:5]}")
+
+    def test_non_high_income_in_stopping_pipeline(self):
+        """All Low/Lower Middle/Upper Middle rows must have in_stopping_pipeline == True."""
+        pipeline_groups = {"Low income", "Lower Middle", "Upper Middle"}
+        dev_rows = self.stop_df[self.stop_df["dev_group"].isin(pipeline_groups)]
+        if dev_rows.empty:
+            return
+        bad = dev_rows[dev_rows["in_stopping_pipeline"].astype(str) != "True"]
+        self.assertEqual(len(bad), 0,
+            f"{len(bad)} developing-country rows have in_stopping_pipeline=False: "
+            f"{bad['country'].tolist()[:5]}")
+
+    def test_high_income_p_values_are_null(self):
+        """p_conservative and p_biased must be NaN/null for all High income rows."""
+        hi_rows = self.stop_df[self.stop_df["dev_group"] == "High income"]
+        if hi_rows.empty:
+            return
+        for col in ["p_conservative", "p_biased"]:
+            if col not in self.stop_df.columns:
+                continue
+            non_null = hi_rows[hi_rows[col].notna()]
+            self.assertEqual(len(non_null), 0,
+                f"{len(non_null)} High income rows have non-null {col}: "
+                f"{non_null['country'].tolist()[:5]}")
 
 
 # ---------------------------------------------------------------------------

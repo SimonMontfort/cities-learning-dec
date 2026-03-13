@@ -72,6 +72,7 @@ GROUP_COLORS = {
     "High income":   "#a0a0c0",
     "-":             "#888888",
 }
+GROUP_ORDER = ["Low income", "Lower Middle", "Upper Middle", "High income", "-"]
 
 os.makedirs(PLOT_DIR, exist_ok=True)
 os.makedirs(TABLE_DIR, exist_ok=True)
@@ -134,9 +135,10 @@ print(f"  ✓  Summary CSV columns OK")
 
 # CHECK: RECALL_TARGET / CONFIDENCE in sync with E1
 # (inferred from can_stop_biased vs p_biased)
-stopped_rows = summary[summary["can_stop_biased"]]
+stopped_rows = summary[summary["can_stop_biased"].fillna(False)]
 not_stopped  = summary[
     summary["omega"].notna() &
+    summary["p_biased"].notna() &
     (summary["p_biased"] > P_STOP)
 ].copy()
 
@@ -428,27 +430,90 @@ plt.savefig(out_plot, dpi=150)
 plt.close()
 print(f"  Saved: {out_plot}")
 
-# ── Sanity check: stopped countries should reach p ≤ P_STOP ───────────────────
+# ── All-country trajectories — every country with n_fps > 0 ───────────────────
+# Includes both stopped and continuing countries so trends are visible together.
 
-print(f"  Generating sanity check (stopped countries)…")
+print(f"  Generating all-country trajectories (n_fps > 0)…")
 
-stopped_rows_df = summary[summary["can_stop_biased"]]
-if len(stopped_rows_df) > 0:
-    ncols2 = min(4, len(stopped_rows_df))
-    nrows2 = -(-len(stopped_rows_df) // ncols2)
-    fig2, axes2 = plt.subplots(nrows2, ncols2,
-                                figsize=(ncols2 * 3.8, nrows2 * 3.2),
-                                constrained_layout=True)
-    axes2_flat = (axes2.flatten() if hasattr(axes2, "flatten") else [axes2])
+all_fp_countries = summary[
+    summary["omega"].notna() &
+    (summary["n_fps"] > 0)
+].sort_values(["dev_group", "country"])
 
-    sanity_pass = True
-    for idx, (_, row) in enumerate(stopped_rows_df.iterrows()):
-        ax      = axes2_flat[idx]
+if len(all_fp_countries) > 0:
+    ncols_a = 4
+    nrows_a = -(-len(all_fp_countries) // ncols_a)
+    fig_a, axes_a = plt.subplots(
+        nrows_a, ncols_a,
+        figsize=(ncols_a * 3.8, nrows_a * 3.2),
+        constrained_layout=True
+    )
+    axes_a_flat = axes_a.flatten() if hasattr(axes_a, "flatten") else [axes_a]
+
+    for idx, (_, row) in enumerate(all_fp_countries.iterrows()):
+        ax      = axes_a_flat[idx]
         country = row["country"]
         n_ucdb  = int(row["n_ucdb_total"])
         omega   = float(row["omega"])
         dev     = row["dev_group"]
         color   = GROUP_COLORS.get(dev, "#888")
+        stopped = bool(row.get("can_stop_biased", False))
+
+        cdf        = df[df["country"] == country]
+        c_reviewed = cdf[cdf["decision"] != ""].sort_values("score", ascending=False)
+        labels     = (c_reviewed["decision"] != "keep").astype(int).values
+        x          = np.arange(1, len(labels) + 1)
+        ps         = _trajectory(labels, n_ucdb, omega)
+        mask       = ~np.isnan(ps)
+
+        ax.plot(x[mask], ps[mask], color=color, linewidth=1.6,
+                alpha=0.9, zorder=3)
+        ax.axhline(P_STOP, color="black", linestyle="--", linewidth=0.9)
+        ax.set_ylim(-0.02, 1.02)
+        ax.grid(alpha=0.12)
+
+        status_label = "✓ STOPPED" if stopped else "→ continue"
+        ax.set_title(
+            f"{country}  {status_label}\n"
+            f"{dev}  ·  ω={omega:.1f}  ·  "
+            f"{int(row['n_fps'])} FPs / {int(row['n_reviewed'])} rev of "
+            f"{int(row['n_queue'])} q",
+            fontsize=7, color=color, fontweight="bold"
+        )
+        ax.set_xlabel("Cities reviewed", fontsize=6.5)
+        ax.set_ylabel("p-value", fontsize=6.5)
+        ax.tick_params(labelsize=6)
+
+    for idx in range(len(all_fp_countries), len(axes_a_flat)):
+        axes_a_flat[idx].set_visible(False)
+
+    fig_a.suptitle(
+        f"p-value trajectories — all countries with ≥1 FP\n"
+        f"dashed = p={P_STOP} stop threshold  ·  ✓ = already stopped",
+        fontsize=9
+    )
+    out_all = os.path.join(PLOT_DIR, "trajectories_all_fp_countries.png")
+    plt.savefig(out_all, dpi=150)
+    plt.close()
+    print(f"  Saved: {out_all}")
+else:
+    print("  No countries with FPs yet — skipping all-country trajectory plot")
+
+
+# ── Sanity check: stopped countries — split by development group ──────────────
+
+print(f"  Generating sanity check (stopped countries, by dev group)…")
+
+stopped_rows_df = summary[summary["can_stop_biased"] == True]
+if len(stopped_rows_df) > 0:
+    sanity_pass = True
+    # Collect trajectory data first (also runs the checks)
+    traj_data = []
+    for _, row in stopped_rows_df.iterrows():
+        country = row["country"]
+        n_ucdb  = int(row["n_ucdb_total"])
+        omega   = float(row["omega"])
+        dev     = row["dev_group"]
 
         cdf        = df[df["country"] == country]
         c_reviewed = cdf[cdf["decision"] != ""].sort_values("score", ascending=False)
@@ -471,35 +536,100 @@ if len(stopped_rows_df) > 0:
                 print(f"  ⚠  {country}: p-value rising over time "
                       f"(first half mean={first_half:.3f}, second={second_half:.3f})")
 
-        mask = ~np.isnan(ps)
-        ax.plot(x[mask], ps[mask], color=color, linewidth=1.8)
+        traj_data.append({
+            "country": country, "dev": dev, "omega": omega,
+            "n_fps": int(row["n_fps"]), "n_reviewed": int(row["n_reviewed"]),
+            "n_queue": int(row.get("n_queue", row["n_reviewed"])),
+            "x": x, "ps": ps,
+        })
+
+    if sanity_pass:
+        print(f"  ✓  All {len(stopped_rows_df)} stopped-country trajectories confirmed")
+
+    # One figure per development group
+    sanity_groups = sorted(set(t["dev"] for t in traj_data),
+                           key=lambda g: GROUP_ORDER.index(g) if g in GROUP_ORDER else 99)
+
+    for grp in sanity_groups:
+        grp_traj = [t for t in traj_data if t["dev"] == grp]
+        if not grp_traj:
+            continue
+
+        ncols2 = min(4, len(grp_traj))
+        nrows2 = -(-len(grp_traj) // ncols2)
+        fig2, axes2 = plt.subplots(nrows2, ncols2,
+                                    figsize=(ncols2 * 3.8, nrows2 * 3.2),
+                                    constrained_layout=True)
+        axes2_flat = axes2.flatten() if hasattr(axes2, "flatten") else [axes2]
+        color_g = GROUP_COLORS.get(grp, "#888")
+
+        for idx, t in enumerate(grp_traj):
+            ax   = axes2_flat[idx]
+            mask = ~np.isnan(t["ps"])
+            ax.plot(t["x"][mask], t["ps"][mask], color=color_g, linewidth=1.8)
+            ax.axhline(P_STOP, color="black", linestyle="--", linewidth=0.9)
+            ax.set_ylim(-0.02, 1.02)
+            ax.grid(alpha=0.12)
+            ax.set_title(
+                f"{t['country']}  ✓ STOPPED\n"
+                f"ω={t['omega']:.1f}  ·  {t['n_fps']} FPs / "
+                f"{t['n_reviewed']} rev of {t['n_queue']} q",
+                fontsize=7.5, color=color_g, fontweight="bold"
+            )
+            ax.set_xlabel("Cities reviewed", fontsize=6.5)
+            ax.set_ylabel("p-value", fontsize=6.5)
+            ax.tick_params(labelsize=6)
+
+        for idx in range(len(grp_traj), len(axes2_flat)):
+            axes2_flat[idx].set_visible(False)
+
+        fig2.suptitle(
+            f"Sanity check — stopped countries  ·  {grp}  (p ≤ {P_STOP})\n"
+            "Trajectories should be generally decreasing and end below the dashed line",
+            fontsize=9
+        )
+        grp_slug = grp.lower().replace(" ", "_").replace("/", "_")
+        out_sanity = os.path.join(PLOT_DIR, f"sanity_stopped_trajectories_{grp_slug}.png")
+        plt.savefig(out_sanity, dpi=150)
+        plt.close()
+        print(f"  Saved: {out_sanity}")
+
+    # Also save combined plot for backwards compatibility
+    ncols2 = min(4, len(traj_data))
+    nrows2 = -(-len(traj_data) // ncols2)
+    fig2c, axes2c = plt.subplots(nrows2, ncols2,
+                                  figsize=(ncols2 * 3.8, nrows2 * 3.2),
+                                  constrained_layout=True)
+    axes2c_flat = axes2c.flatten() if hasattr(axes2c, "flatten") else [axes2c]
+    for idx, t in enumerate(traj_data):
+        ax   = axes2c_flat[idx]
+        mask = ~np.isnan(t["ps"])
+        color_t = GROUP_COLORS.get(t["dev"], "#888")
+        ax.plot(t["x"][mask], t["ps"][mask], color=color_t, linewidth=1.8)
         ax.axhline(P_STOP, color="black", linestyle="--", linewidth=0.9)
         ax.set_ylim(-0.02, 1.02)
         ax.grid(alpha=0.12)
         ax.set_title(
-            f"{country}  ✓ STOPPED\n"
-            f"{dev}  ·  ω={omega:.1f}  ·  {row['n_fps']} FPs / {row['n_reviewed']} rev",
-            fontsize=7.5, color=color, fontweight="bold"
+            f"{t['country']}  ✓  ({t['dev']})\n"
+            f"ω={t['omega']:.1f}  ·  {t['n_fps']} FP / "
+            f"{t['n_reviewed']} rev of {t['n_queue']} q",
+            fontsize=7, color=color_t, fontweight="bold"
         )
         ax.set_xlabel("Cities reviewed", fontsize=6.5)
         ax.set_ylabel("p-value", fontsize=6.5)
         ax.tick_params(labelsize=6)
-
-    for idx in range(len(stopped_rows_df), len(axes2_flat)):
-        axes2_flat[idx].set_visible(False)
-
-    if sanity_pass:
-        print(f"  ✓  All {len(stopped_rows_df)} stopped-country trajectories confirmed")
-    
-    fig2.suptitle(
-        f"Sanity check — countries already stopped  (p ≤ {P_STOP})\n"
+    for idx in range(len(traj_data), len(axes2c_flat)):
+        axes2c_flat[idx].set_visible(False)
+    fig2c.suptitle(
+        f"Sanity check — all stopped countries  (p ≤ {P_STOP})\n"
         "Trajectories should be generally decreasing and end below the dashed line",
         fontsize=9
     )
-    out_sanity = os.path.join(PLOT_DIR, "sanity_stopped_trajectories.png")
-    plt.savefig(out_sanity, dpi=150)
+    out_sanity_all = os.path.join(PLOT_DIR, "sanity_stopped_trajectories.png")
+    plt.savefig(out_sanity_all, dpi=150)
     plt.close()
-    print(f"  Saved: {out_sanity}")
+    print(f"  Saved: {out_sanity_all}")
+
 else:
     print("  No stopped countries yet — skipping sanity plot")
 
