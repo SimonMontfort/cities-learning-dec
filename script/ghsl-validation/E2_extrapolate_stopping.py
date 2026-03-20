@@ -63,7 +63,16 @@ P_STOP        = round(1 - CONFIDENCE, 10)   # 0.10
 
 WINDOW     = 50    # last N reviewed cities used for linear fit
 MIN_WINDOW = None  # set dynamically below as max(MIN_FPS * 2, 10)
-MIN_FPS    = 3     # skip countries below this — trajectory is noisy
+MIN_FPS    = 3     # minimum FPs required to fit a trajectory.
+                   # With 0 or 1-2 FPs the p-value curve is nearly perfectly
+                   # linear by construction (hypergeometric with tiny success
+                   # probability), giving R²≈1 and falsely confident batch
+                   # estimates.  Countries below this threshold are flagged
+                   # 'insufficient_data' and E3 gives them a small fixed batch.
+                   # NOTE: E1 uses MIN_FPS=0 because it needs to compute p-values
+                   # for all countries (including 0-FP stopped ones); E2 uses
+                   # MIN_FPS=3 because trajectory extrapolation requires real
+                   # variance in the p-value signal to be meaningful.
 
 GROUP_COLORS = {
     "Low income":    "#e05c3a",
@@ -95,6 +104,13 @@ def _extrapolate(slope, intercept, x_last):
 def _trajectory(labels, n_ucdb, omega):
     return p_trajectory(labels, n_ucdb, omega,
                         recall_target=RECALL_TARGET, min_fps=MIN_FPS)
+
+def _trajectory_vis(labels, n_ucdb, omega):
+    """Like _trajectory but with min_fps=0 — for visualisation only.
+    The extrapolation uses MIN_FPS=3 to avoid fitting noisy trajectories,
+    but sanity/overview plots should show the full curve from the first review."""
+    return p_trajectory(labels, n_ucdb, omega,
+                        recall_target=RECALL_TARGET, min_fps=0)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -146,17 +162,17 @@ print(f"  Countries with data        : {summary['omega'].notna().sum()}")
 print(f"  Already stopped (biased)   : {len(stopped_rows)}")
 print(f"  Not yet stopped            : {len(not_stopped)}")
 
-if len(not_stopped) == 0:
-    print("\n  All countries stopped — nothing to extrapolate. Done.")
-    sys.exit(0)
-
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. PER-COUNTRY TRAJECTORY + EXTRAPOLATION
 # ══════════════════════════════════════════════════════════════════════════════
 
 print(f"\n[2/3] Computing trajectories (window={WINDOW}, min_fps={MIN_FPS})…")
-print(f"  {'Country':<35} {'p_now':>6}  {'slope':>8}  {'R²':>5}  {'n_more':>7}  status")
-print(f"  {'-'*35} {'-'*6}  {'-'*8}  {'-'*5}  {'-'*7}  {'-'*15}")
+
+if len(not_stopped) == 0:
+    print("  All countries stopped — skipping extrapolation, generating plots only.")
+else:
+    print(f"  {'Country':<35} {'p_now':>6}  {'slope':>8}  {'R²':>5}  {'n_more':>7}  status")
+    print(f"  {'-'*35} {'-'*6}  {'-'*8}  {'-'*5}  {'-'*7}  {'-'*15}")
 
 extrap_results = []
 country_data   = {}
@@ -242,99 +258,108 @@ for _, row in not_stopped.sort_values("p_biased", ascending=False).iterrows():
         "n_reviewed": n_rev, "p_now": p_now,
     }
 
-# ── Save ───────────────────────────────────────────────────────────────────────
+# ── Save + summary checks (only when there were countries to extrapolate) ──────
 
-extrap_df = pd.DataFrame(extrap_results).sort_values(
-    ["status", "n_more_estimated"], ascending=[True, True], na_position="last"
-)
-extrap_df.to_csv(OUT_CSV, index=False)
+if extrap_results:
+    extrap_df = pd.DataFrame(extrap_results).sort_values(
+        ["status", "n_more_estimated"], ascending=[True, True], na_position="last"
+    )
+    extrap_df.to_csv(OUT_CSV, index=False)
 
-# ── Summary checks ─────────────────────────────────────────────────────────────
+    # ── Summary checks ─────────────────────────────────────────────────────────
 
-n_extrap  = (extrap_df["status"] == "extrapolated").sum()
-n_indet   = (extrap_df["status"] == "indeterminate").sum()
-n_insuff  = (extrap_df["status"] == "insufficient_data").sum()
+    n_extrap  = (extrap_df["status"] == "extrapolated").sum()
+    n_indet   = (extrap_df["status"] == "indeterminate").sum()
+    n_insuff  = (extrap_df["status"] == "insufficient_data").sum()
 
-print()
-print("── E2 Summary checks ─────────────────────────────────────────")
-print(f"  Extrapolated (have estimate) : {n_extrap}")
-print(f"  Indeterminate (slope ≥ 0)    : {n_indet}")
-print(f"  Insufficient data            : {n_insuff}")
+    print()
+    print("── E2 Summary checks ─────────────────────────────────────────")
+    print(f"  Extrapolated (have estimate) : {n_extrap}")
+    print(f"  Indeterminate (slope ≥ 0)    : {n_indet}")
+    print(f"  Insufficient data            : {n_insuff}")
 
-# CHECK: n_more should be non-negative
-bad_nmore = extrap_df[
-    extrap_df["n_more_estimated"].notna() & (extrap_df["n_more_estimated"] < 0)
-]
-if not bad_nmore.empty:
-    print(f"  ✗  Negative n_more_estimated for: {bad_nmore['country'].tolist()}")
-    sys.exit(1)
-print(f"  ✓  All n_more_estimated ≥ 0")
+    # CHECK: n_more should be non-negative
+    bad_nmore = extrap_df[
+        extrap_df["n_more_estimated"].notna() & (extrap_df["n_more_estimated"] < 0)
+    ]
+    if not bad_nmore.empty:
+        print(f"  ✗  Negative n_more_estimated for: {bad_nmore['country'].tolist()}")
+        sys.exit(1)
+    print(f"  ✓  All n_more_estimated ≥ 0")
 
-# CHECK: n_more vs remaining UCDB cities — three tiers
-extrap_df2 = extrap_df.merge(
-    summary[["country", "n_queue"]], on="country", how="left"
-)
-extrap_df2["n_unreviewed"] = extrap_df2["n_ucdb_total"] - extrap_df2["n_reviewed"]
+    # CHECK: n_more vs remaining UCDB cities — three tiers
+    extrap_df2 = extrap_df.merge(
+        summary[["country", "n_queue"]], on="country", how="left"
+    )
+    extrap_df2["n_unreviewed"] = extrap_df2["n_ucdb_total"] - extrap_df2["n_reviewed"]
 
-# Tier 1: n_more > unreviewed — impossible to satisfy with available cities
-full_tail = extrap_df2[
-    extrap_df2["n_more_estimated"].notna() &
-    (extrap_df2["n_more_estimated"] > extrap_df2["n_unreviewed"])
-]
-# Tier 2: n_more > 2× unreviewed — very unlikely even with full tail
-very_large = extrap_df2[
-    extrap_df2["n_more_estimated"].notna() &
-    (extrap_df2["n_more_estimated"] > extrap_df2["n_unreviewed"] * 2)
-]
+    # Tier 1: n_more > unreviewed — impossible to satisfy with available cities
+    full_tail = extrap_df2[
+        extrap_df2["n_more_estimated"].notna() &
+        (extrap_df2["n_more_estimated"] > extrap_df2["n_unreviewed"])
+    ]
+    # Tier 2: n_more > 2× unreviewed — very unlikely even with full tail
+    very_large = extrap_df2[
+        extrap_df2["n_more_estimated"].notna() &
+        (extrap_df2["n_more_estimated"] > extrap_df2["n_unreviewed"] * 2)
+    ]
 
-if not full_tail.empty:
-    print(f"  ⚠  n_more_estimated EXCEEDS available unreviewed cities for:")
-    for _, r in full_tail.iterrows():
-        print(f"     {r['country']}: n_more={int(r['n_more_estimated'])}, "
-              f"unreviewed={int(r['n_unreviewed'])}, total_ucdb={int(r['n_ucdb_total'])}")
-        print(f"     → The linear trend is too shallow to reach p={P_STOP} within")
-        print(f"       the remaining cities. However, reviewing the full UCDB tail")
-        print(f"       WILL eventually reach p=0 (degenerate case: N=reviewed).")
-        print(f"       This country needs more reviews than a single batch can provide.")
-    # Write the flag into extrap_df so E3 can act on it
-    full_tail_countries = set(full_tail["country"])
-    extrap_df.loc[
-        extrap_df["country"].isin(full_tail_countries), "status"
-    ] = "full_tail_required"
-    extrap_df.to_csv(OUT_CSV, index=False)   # re-save with updated status
-    print(f"  ↳  Status set to 'full_tail_required' — E3 will add all remaining cities up to cap")
-elif not very_large.empty:
-    print(f"  ⚠  n_more_estimated > 2× unreviewed for:")
-    for _, r in very_large.iterrows():
-        print(f"     {r['country']}: n_more={int(r['n_more_estimated'])}, "
-              f"unreviewed={int(r['n_unreviewed'])}")
+    if not full_tail.empty:
+        print(f"  ⚠  n_more_estimated EXCEEDS available unreviewed cities for:")
+        for _, r in full_tail.iterrows():
+            print(f"     {r['country']}: n_more={int(r['n_more_estimated'])}, "
+                  f"unreviewed={int(r['n_unreviewed'])}, total_ucdb={int(r['n_ucdb_total'])}")
+            print(f"     → The linear trend is too shallow to reach p={P_STOP} within")
+            print(f"       the remaining cities. However, reviewing the full UCDB tail")
+            print(f"       WILL eventually reach p=0 (degenerate case: N=reviewed).")
+            print(f"       This country needs more reviews than a single batch can provide.")
+        full_tail_countries = set(full_tail["country"])
+        extrap_df.loc[
+            extrap_df["country"].isin(full_tail_countries), "status"
+        ] = "full_tail_required"
+        extrap_df.to_csv(OUT_CSV, index=False)
+        print(f"  ↳  Status set to 'full_tail_required' — E3 will add all remaining cities up to cap")
+    elif not very_large.empty:
+        print(f"  ⚠  n_more_estimated > 2× unreviewed for:")
+        for _, r in very_large.iterrows():
+            print(f"     {r['country']}: n_more={int(r['n_more_estimated'])}, "
+                  f"unreviewed={int(r['n_unreviewed'])}")
+    else:
+        print(f"  ✓  n_more_estimated within available unreviewed cities for all countries")
+
+    # CHECK: R² — warn if low (extrapolation unreliable)
+    low_r2 = extrap_df[
+        (extrap_df["status"] == "extrapolated") &
+        extrap_df["trend_r2"].notna() &
+        (extrap_df["trend_r2"] < 0.3)
+    ]
+    if not low_r2.empty:
+        print(f"  ⚠  Low R² (< 0.3) — extrapolation noisy for:")
+        for _, r in low_r2.iterrows():
+            print(f"     {r['country']}: R²={r['trend_r2']:.2f}  "
+                  f"(add buffer to n_more_estimated)")
+    else:
+        print(f"  ✓  R² ≥ 0.3 for all extrapolated countries")
+
+    # Print final table
+    print()
+    print("  Final estimates:")
+    print(f"  {'Country':<35} {'p_now':>6}  {'n_more':>7}  {'R²':>5}  status")
+    for _, r in extrap_df.sort_values("n_more_estimated", na_position="last").iterrows():
+        nm = f"{int(r['n_more_estimated'])}" if pd.notna(r["n_more_estimated"]) else "—"
+        r2 = f"{r['trend_r2']:.2f}"          if pd.notna(r["trend_r2"])         else "—"
+        print(f"  {r['country']:<35} {r['p_biased_now']:>6.3f}  {nm:>7}  {r2:>5}  {r['status']}")
+
+    print(f"\n  Saved: {OUT_CSV}")
 else:
-    print(f"  ✓  n_more_estimated within available unreviewed cities for all countries")
-
-# CHECK: R² — warn if low (extrapolation unreliable)
-low_r2 = extrap_df[
-    (extrap_df["status"] == "extrapolated") &
-    extrap_df["trend_r2"].notna() &
-    (extrap_df["trend_r2"] < 0.3)
-]
-if not low_r2.empty:
-    print(f"  ⚠  Low R² (< 0.3) — extrapolation noisy for:")
-    for _, r in low_r2.iterrows():
-        print(f"     {r['country']}: R²={r['trend_r2']:.2f}  "
-              f"(add buffer to n_more_estimated)")
-else:
-    print(f"  ✓  R² ≥ 0.3 for all extrapolated countries")
-
-# Print final table
-print()
-print("  Final estimates:")
-print(f"  {'Country':<35} {'p_now':>6}  {'n_more':>7}  {'R²':>5}  status")
-for _, r in extrap_df.sort_values("n_more_estimated", na_position="last").iterrows():
-    nm = f"{int(r['n_more_estimated'])}" if pd.notna(r["n_more_estimated"]) else "—"
-    r2 = f"{r['trend_r2']:.2f}"          if pd.notna(r["trend_r2"])         else "—"
-    print(f"  {r['country']:<35} {r['p_biased_now']:>6.3f}  {nm:>7}  {r2:>5}  {r['status']}")
-
-print(f"\n  Saved: {OUT_CSV}")
+    print("  No countries to extrapolate — all pipeline countries stopped or exhausted.")
+    # Write an empty CSV so downstream scripts don't fail on missing file
+    pd.DataFrame(columns=[
+        "country", "dev_group", "n_ucdb_total", "n_reviewed", "n_fps",
+        "omega", "p_biased_now", "trend_slope", "trend_r2", "trend_window",
+        "n_more_estimated", "status"
+    ]).to_csv(OUT_CSV, index=False)
+    print(f"  Empty extrapolation CSV written: {OUT_CSV}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. PLOTS
@@ -342,93 +367,95 @@ print(f"\n  Saved: {OUT_CSV}")
 
 print("\n[3/3] Generating plots…")
 
-# ── Main extrapolation plot ────────────────────────────────────────────────────
+# ── Main extrapolation plot (only when there are countries to show) ─────────────
 
 valid_countries = [c for c in country_data if country_data[c]["trend"] is not None]
-ncols = 4
-nrows = -(-len(valid_countries) // ncols)
 
-fig, axes = plt.subplots(nrows, ncols,
-                          figsize=(ncols * 3.8, nrows * 3.4),
-                          constrained_layout=True)
-axes_flat = axes.flatten() if nrows * ncols > 1 else [axes]
+if valid_countries:
+    ncols = 4
+    nrows = -(-len(valid_countries) // ncols)
+    fig, axes = plt.subplots(nrows, ncols,
+                              figsize=(ncols * 3.8, nrows * 3.4),
+                              constrained_layout=True)
+    axes_flat = axes.flatten() if nrows * ncols > 1 else [axes]
 
-for idx, country in enumerate(valid_countries):
-    ax    = axes_flat[idx]
-    d     = country_data[country]
-    x, ps = d["x"], d["ps"]
-    color = GROUP_COLORS.get(d["dev"], "#888")
-    slope, intercept, x_win, p_win, r_sq = d["trend"]
+    for idx, country in enumerate(valid_countries):
+        ax    = axes_flat[idx]
+        d     = country_data[country]
+        x, ps = d["x"], d["ps"]
+        color = GROUP_COLORS.get(d["dev"], "#888")
+        slope, intercept, x_win, p_win, r_sq = d["trend"]
 
-    # Actual trajectory
-    mask = ~np.isnan(ps)
-    ax.plot(x[mask], ps[mask], color=color, linewidth=1.5,
-            alpha=0.8, zorder=3, label="Actual p (buscarpy)")
+        # Actual trajectory
+        mask = ~np.isnan(ps)
+        ax.plot(x[mask], ps[mask], color=color, linewidth=1.5,
+                alpha=0.8, zorder=3, label="Actual p (buscarpy)")
 
-    # Scatter the window used for fitting
-    ax.scatter(x_win, p_win, s=14, color=color, zorder=4,
-               alpha=0.5, label=f"Fit window (last {len(x_win)})")
+        # Scatter the window used for fitting
+        ax.scatter(x_win, p_win, s=14, color=color, zorder=4,
+                   alpha=0.5, label=f"Fit window (last {len(x_win)})")
 
-    x_last = x[-1]
-    x_stop, n_more = _extrapolate(slope, intercept, x_last)
+        x_last = x[-1]
+        x_stop, n_more = _extrapolate(slope, intercept, x_last)
 
-    if x_stop is not None:
-        # Extend fit line from start of window to projected stop
-        x_fit = np.array([x_win[0], x_stop])
-        p_fit = np.clip(slope * x_fit + intercept, 0, 1)
-        ax.plot(x_fit, p_fit, "--", color=color, linewidth=1.2,
-                alpha=0.5, zorder=2)
-        ax.axvline(x_stop, color=color, linewidth=0.8, linestyle=":", alpha=0.5)
-        ax.text(x_stop, P_STOP + 0.05, f"+{n_more}",
-                fontsize=7, color=color, ha="center", va="bottom", fontweight="bold")
-        ax.axvspan(x_last, x_stop, alpha=0.07, color=color)
-    else:
-        x_fit = np.array([x_win[0], x_last * 1.3])
-        ax.plot(x_fit, np.clip(slope * x_fit + intercept, 0, 1),
-                "--", color="#aaa", linewidth=1.0, alpha=0.5)
-        ax.text(0.97, 0.55, "⚠ slope ≥ 0\nindeterminate",
-                transform=ax.transAxes, ha="right", va="top",
-                fontsize=6.5, color="#999", style="italic")
+        if x_stop is not None:
+            x_fit = np.array([x_win[0], x_stop])
+            p_fit = np.clip(slope * x_fit + intercept, 0, 1)
+            ax.plot(x_fit, p_fit, "--", color=color, linewidth=1.2,
+                    alpha=0.5, zorder=2)
+            ax.axvline(x_stop, color=color, linewidth=0.8, linestyle=":", alpha=0.5)
+            ax.text(x_stop, P_STOP + 0.05, f"+{n_more}",
+                    fontsize=7, color=color, ha="center", va="bottom", fontweight="bold")
+            ax.axvspan(x_last, x_stop, alpha=0.07, color=color)
+        else:
+            x_fit = np.array([x_win[0], x_last * 1.3])
+            ax.plot(x_fit, np.clip(slope * x_fit + intercept, 0, 1),
+                    "--", color="#aaa", linewidth=1.0, alpha=0.5)
+            ax.text(0.97, 0.55, "⚠ slope ≥ 0\nindeterminate",
+                    transform=ax.transAxes, ha="right", va="top",
+                    fontsize=6.5, color="#999", style="italic")
 
-    ax.axhline(P_STOP, color="black", linestyle="--", linewidth=0.9, zorder=1)
-    ax.scatter([x_last], [d["p_now"]], color=color, s=50,
-               zorder=6, edgecolors="white", linewidths=0.8)
+        ax.axhline(P_STOP, color="black", linestyle="--", linewidth=0.9, zorder=1)
+        ax.scatter([x_last], [d["p_now"]], color=color, s=50,
+                   zorder=6, edgecolors="white", linewidths=0.8)
 
-    ax.set_ylim(-0.02, 1.02)
-    ax.set_xlim(max(1, x_win[0] - 3),
-                max(x_stop or x_last, x_last) * 1.15)
-    ax.grid(alpha=0.12)
-    ax.set_xlabel("Cities reviewed (cumulative)", fontsize=6.5)
-    ax.set_ylabel("p-value (biased urn)", fontsize=6.5)
-    ax.tick_params(labelsize=6)
+        ax.set_ylim(-0.02, 1.02)
+        ax.set_xlim(max(1, x_win[0] - 3),
+                    max(x_stop or x_last, x_last) * 1.15)
+        ax.grid(alpha=0.12)
+        ax.set_xlabel("Cities reviewed (cumulative)", fontsize=6.5)
+        ax.set_ylabel("p-value (biased urn)", fontsize=6.5)
+        ax.tick_params(labelsize=6)
 
-    er = extrap_df[extrap_df["country"] == country].iloc[0]
-    nm_label = (f"~{int(er['n_more_estimated'])} more"
-                if pd.notna(er["n_more_estimated"]) else "indeterminate")
-    ax.set_title(
-        f"{country}\n"
-        f"{d['dev']}  ·  ω={d['omega']:.1f}  ·  "
-        f"{d['n_fps']} FPs / {d['n_reviewed']} rev / {d['n_ucdb']} total\n"
-        f"p={d['p_now']:.3f}  →  {nm_label}  "
-        f"(slope={slope:+.4f}, R²={r_sq:.2f})",
-        fontsize=6.5, color=color, fontweight="bold"
+        er = extrap_df[extrap_df["country"] == country].iloc[0]
+        nm_label = (f"~{int(er['n_more_estimated'])} more"
+                    if pd.notna(er["n_more_estimated"]) else "indeterminate")
+        ax.set_title(
+            f"{country}\n"
+            f"{d['dev']}  ·  ω={d['omega']:.1f}  ·  "
+            f"{d['n_fps']} FPs / {d['n_reviewed']} rev / {d['n_ucdb']} total\n"
+            f"p={d['p_now']:.3f}  →  {nm_label}  "
+            f"(slope={slope:+.4f}, R²={r_sq:.2f})",
+            fontsize=6.5, color=color, fontweight="bold"
+        )
+
+    for idx in range(len(valid_countries), len(axes_flat)):
+        axes_flat[idx].set_visible(False)
+
+    fig.suptitle(
+        f"Extrapolation to stopping criterion  (p ≤ {P_STOP})  ·  "
+        f"{RECALL_TARGET*100:.0f}% recall target\n"
+        f"Solid line = actual buscarpy p  ·  Dots = fit window (last {WINDOW})  ·  "
+        f"Dashed = linear extrapolation  ·  '+N' = cities still needed\n"
+        f"Conservative: new cities will be at least as clean as the last {WINDOW} reviewed",
+        fontsize=9
     )
-
-for idx in range(len(valid_countries), len(axes_flat)):
-    axes_flat[idx].set_visible(False)
-
-fig.suptitle(
-    f"Extrapolation to stopping criterion  (p ≤ {P_STOP})  ·  "
-    f"{RECALL_TARGET*100:.0f}% recall target\n"
-    f"Solid line = actual buscarpy p  ·  Dots = fit window (last {WINDOW})  ·  "
-    f"Dashed = linear extrapolation  ·  '+N' = cities still needed\n"
-    f"Conservative: new cities will be at least as clean as the last {WINDOW} reviewed",
-    fontsize=9
-)
-out_plot = os.path.join(PLOT_DIR, "extrapolation_to_stopping.png")
-plt.savefig(out_plot, dpi=150)
-plt.close()
-print(f"  Saved: {out_plot}")
+    out_plot = os.path.join(PLOT_DIR, "extrapolation_to_stopping.png")
+    plt.savefig(out_plot, dpi=150)
+    plt.close()
+    print(f"  Saved: {out_plot}")
+else:
+    print("  Skipping extrapolation_to_stopping.png — no countries with fitted trends.")
 
 # ── All-country trajectories — every country with n_fps > 0 ───────────────────
 # Includes both stopped and continuing countries so trends are visible together.
@@ -463,7 +490,7 @@ if len(all_fp_countries) > 0:
         c_reviewed = cdf[cdf["decision"] != ""].sort_values("score", ascending=False)
         labels     = (c_reviewed["decision"] != "keep").astype(int).values
         x          = np.arange(1, len(labels) + 1)
-        ps         = _trajectory(labels, n_ucdb, omega)
+        ps         = _trajectory_vis(labels, n_ucdb, omega)
         mask       = ~np.isnan(ps)
 
         ax.plot(x[mask], ps[mask], color=color, linewidth=1.6,
@@ -519,7 +546,7 @@ if len(stopped_rows_df) > 0:
         c_reviewed = cdf[cdf["decision"] != ""].sort_values("score", ascending=False)
         labels     = (c_reviewed["decision"] != "keep").astype(int).values
         x          = np.arange(1, len(labels) + 1)
-        ps         = _trajectory(labels, n_ucdb, omega)
+        ps         = _trajectory_vis(labels, n_ucdb, omega)
 
         # CHECK: trajectory should end at or below P_STOP
         valid_ps = ps[~np.isnan(ps)]
@@ -566,7 +593,23 @@ if len(stopped_rows_df) > 0:
         for idx, t in enumerate(grp_traj):
             ax   = axes2_flat[idx]
             mask = ~np.isnan(t["ps"])
-            ax.plot(t["x"][mask], t["ps"][mask], color=color_g, linewidth=1.8)
+            if mask.sum() > 1:
+                ax.plot(t["x"][mask], t["ps"][mask], color=color_g, linewidth=1.8)
+            else:
+                # Trajectory is a single point or all-NaN — draw a horizontal
+                # line at the final p-value and note it
+                final_p = t["ps"][~np.isnan(t["ps"])]
+                final_p = float(final_p[-1]) if len(final_p) > 0 else None
+                if final_p is not None:
+                    ax.axhline(final_p, color=color_g, linewidth=1.8,
+                               linestyle="-", alpha=0.8)
+                    ax.text(0.5, 0.5, f"p={final_p:.3f}\n(single point)",
+                            ha="center", va="center", fontsize=7,
+                            color=color_g, transform=ax.transAxes)
+                else:
+                    ax.text(0.5, 0.5, "no valid\ntrajectory",
+                            ha="center", va="center", fontsize=7,
+                            color="#aaa", transform=ax.transAxes)
             ax.axhline(P_STOP, color="black", linestyle="--", linewidth=0.9)
             ax.set_ylim(-0.02, 1.02)
             ax.grid(alpha=0.12)

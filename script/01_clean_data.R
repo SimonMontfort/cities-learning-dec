@@ -117,18 +117,26 @@ variables <- c(
 )
 
 
+
 modis <- read.csv("data/modis/modis_pft_shares.csv") %>% as_tibble()
 
-cities_clean <- cities_clean %>% 
-  left_join(modis, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  filter(share_urban != 0)
+rev <- read.csv("data/ghsl_appraisal/cities_review.csv") %>% as_tibble()
 
-cities_clean_sub <- cities_clean %>%
+cities_clean_sub <- cities_clean %>% 
+  left_join(modis, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
+  left_join(rev %>% select(id, decision), by = c("GHS_urban_area_id" = "id")) %>%
+  filter(share_urban != 0 
+         # & !decision %in% c("drop", "ambiguous")
+         )
+
+cities_clean_sub <- cities_clean_sub %>%
   select(all_of(variables), GHS_urban_area_id)
 
 # check that no NAs are in the data
 cities_clean_sub %>% 
   summarise_all(.funs = function(x) sum(is.na(x))) %>% 
   c()
+
+nrow(cities_clean)-nrow(cities_clean_sub)
 
 write_parquet(cities_clean_sub, "data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included_urban.parquet")

@@ -55,7 +55,7 @@ TABLE_DIR  = "data/ghsl_appraisal"
 OUT_CSV    = os.path.join(TABLE_DIR, "country_stopping_summary.csv")
 
 MIN_REVIEWED  = 10
-MIN_FPS       = 0
+MIN_FPS       = 1
 RECALL_TARGET = 0.90   # keep in sync with E2
 CONFIDENCE    = 0.90   # keep in sync with E2
 P_STOP        = round(1 - CONFIDENCE, 10)   # 0.10
@@ -149,21 +149,26 @@ with fiona.open(GPKG_PATH) as src:
 
 ucdb = pd.DataFrame(all_records)
 ucdb["id"]      = pd.to_numeric(ucdb["id"], errors="coerce").astype("Int64")
-ucdb["country"] = ucdb["country_raw"].apply(strip_non_ascii)
+ucdb["country"] = ucdb["country_raw"].apply(normalize_country)
 ucdb_country_n  = ucdb.groupby("country")["id"].count().rename("n_ucdb_total")
 
 print(f"  UCDB total cities : {len(ucdb):,}")
 print(f"  Countries in UCDB : {ucdb['country'].nunique():,}")
 
-csv_countries  = set(df["country"].dropna().unique())
-ucdb_countries = set(ucdb["country"].unique())
-unmatched = csv_countries - ucdb_countries
-if unmatched:
-    print(f"  WARNING: {len(unmatched)} CSV countries not found in UCDB (N falls back to queue size):")
-    for c in sorted(unmatched)[:10]:
+# Normalise CSV country names the same way before comparing
+csv_countries_raw    = set(df["country"].dropna().unique())
+csv_countries_norm   = {normalize_country(c) for c in csv_countries_raw}
+ucdb_countries_norm  = set(ucdb["country"].unique())
+unmatched_norm       = csv_countries_norm - ucdb_countries_norm
+# Map back to original names for the warning message
+norm_to_raw          = {normalize_country(c): c for c in csv_countries_raw}
+unmatched_raw        = [norm_to_raw[n] for n in unmatched_norm]
+if unmatched_raw:
+    print(f"  WARNING: {len(unmatched_raw)} CSV countries not found in UCDB (N falls back to queue size):")
+    for c in sorted(unmatched_raw)[:10]:
         print(f"       {c}")
 else:
-    print(f"  All {len(csv_countries)} CSV countries matched in UCDB")
+    print(f"  All {len(csv_countries_raw)} CSV countries matched in UCDB")
 
 # ==============================================================================
 # 2. PER-COUNTRY ANALYSIS
@@ -201,6 +206,13 @@ for country in all_countries:
         dev_group = cdf["dev_group"].dropna().iloc[0]
     else:
         dev_group = "-"
+
+    # Countries with no dev_group in the queue are not High income
+    # (high-income countries always appear in the queue via initial scoring).
+    # Assign them to "Low income" so they enter the stopping pipeline and
+    # appear correctly in the coverage plot instead of an unlabelled "-" bar.
+    if dev_group == "-":
+        dev_group = "Low income"
 
     country_norm = normalize_country(country)
     n_ucdb_c = int(ucdb_country_n.get(country_norm, n_queue if n_queue > 0 else 0))
@@ -245,11 +257,11 @@ for country in all_countries:
         if stopped_b:
             n_stopped_biased += 1
 
-        sc = "STOP    " if stopped_c else "continue"
-        sb = "STOP    " if stopped_b else "continue"
+        sc = "STOP" if stopped_c else "continue"
+        sb = "STOP" if stopped_b else "continue"
         print(f"  {country:<35} omega={omega:>5.1f}  "
-              f"p_cons={str(p_cons)[:6]:>6} [{sc}]  "
               f"p_bias={str(p_biased)[:6]:>6} [{sb}]  "
+              f"p_cons={str(p_cons)[:6]:>6} [{sc}]  "
               f"({n_fps_c} FPs / {n_rev} rev of {n_queue} queued / {n_ucdb_c} UCDB total)")
 
     # Stopping columns: only meaningful for in-pipeline countries with enough data
@@ -384,6 +396,54 @@ print(f"  OK  omega direction correct for all countries")
 results_df.to_csv(OUT_CSV, index=False, encoding="utf-8")
 print(f"\n  Saved: {OUT_CSV}  ({len(results_df)} rows)")
 
+# -- Pipeline / review status summary -----------------------------------------
+# Counts across all non-high-income countries (the stopping pipeline)
+print()
+print("-- Pipeline coverage summary -----------------------------------------")
+
+hi_df        = results_df[results_df["dev_group"] == "High income"]
+pipeline_df2 = results_df[results_df["dev_group"] != "High income"]
+
+# Fully reviewed / population exhausted: all UCDB cities reviewed, p=NaN,
+# and NOT already stopped (stopped countries may also have n_reviewed >= n_ucdb
+# if their full queue was reviewed before stopping).
+exhausted_mask = (
+    (pipeline_df2["n_reviewed"] >= pipeline_df2["n_ucdb_total"]) &
+    (pipeline_df2["n_ucdb_total"] > 0) &
+    pipeline_df2["p_biased"].isna() &
+    (pipeline_df2["can_stop_biased"] != True)
+)
+fully_reviewed = pipeline_df2[exhausted_mask]
+
+# Insufficient: below MIN_REVIEWED or MIN_FPS threshold (and not exhausted)
+insufficient = pipeline_df2[
+    ~exhausted_mask &
+    (
+        (pipeline_df2["n_reviewed"] < MIN_REVIEWED) |
+        (pipeline_df2["n_fps"]      < MIN_FPS)
+    )
+]
+
+# Still sampling: has data, not stopped, not exhausted, not insufficient
+# Explicitly require p_biased to be finite (notna) — NaN p means either
+# exhausted population or pre-threshold, neither of which is "still sampling".
+still_sampling = pipeline_df2[
+    ~exhausted_mask &
+    (pipeline_df2["can_stop_biased"] == False) &
+    pipeline_df2["p_biased"].notna() &
+    (pipeline_df2["p_biased"] > P_STOP) &
+    ~pipeline_df2.index.isin(insufficient.index)
+]
+
+print(f"  High income countries (excluded from pipeline) : {len(hi_df):>4}")
+print(f"  Non-high-income countries (stopping pipeline)  : {len(pipeline_df2):>4}")
+print(f"    Stopped (biased urn, p ≤ {P_STOP})           : {n_stopped_biased:>4}")
+print(f"    Still sampling (p > {P_STOP})                : {len(still_sampling):>4}")
+print(f"    Fully reviewed (pop. exhausted, p=NaN)       : {len(fully_reviewed):>4}")
+print(f"    Insufficient data (< {MIN_REVIEWED} rev or < {MIN_FPS} FP)    : {len(insufficient):>4}")
+print(f"      of which: not yet queued (0 in queue)      : {(insufficient['n_queue'] == 0).sum():>4}")
+print(f"      of which: in queue but few reviewed         : {((insufficient['n_queue'] > 0) & (insufficient['n_reviewed'] < MIN_REVIEWED)).sum():>4}")
+
 # ==============================================================================
 # 3. PLOTS
 # ==============================================================================
@@ -502,11 +562,18 @@ print(f"  Saved: {coverage_path}")
 plot_df = (
     results_df[
         (results_df["in_stopping_pipeline"] == True) &
-        results_df["omega"].notna()
+        results_df["omega"].notna() &
+        results_df["p_biased"].notna()   # exclude population-exhausted NaN cases
     ]
     .sort_values("p_biased", na_position="last")
     .reset_index(drop=True)
 )
+# Countries with NaN p_biased (population exhausted — all UCDB cities reviewed)
+nan_p_countries = results_df[
+    (results_df["in_stopping_pipeline"] == True) &
+    results_df["omega"].notna() &
+    results_df["p_biased"].isna()
+]["country"].tolist()
 n = len(plot_df)
 fig_h = max(5, n * 0.38 + 1.5)
 
@@ -542,11 +609,13 @@ ax_p.set_xlabel(
 )
 ax_p.set_xlim(0, 1.35)
 ax_p.grid(axis="x", alpha=0.2)
+nan_note = (f"  |  {', '.join(nan_p_countries)}: p=NaN (all UCDB cities reviewed)"
+            if nan_p_countries else "")
 ax_p.set_title(
     f"Stopping criterion  |  {RECALL_TARGET*100:.0f}% recall  |  "
     f"{CONFIDENCE*100:.0f}% confidence\n"
     f"p={P_STOP} threshold (dashed)  |  {n_stopped_biased} countries stopped  "
-    f"|  High-income countries excluded",
+    f"|  High-income countries excluded{nan_note}",
     fontsize=9
 )
 
@@ -584,7 +653,8 @@ overview_groups = [g for g in GROUP_ORDER
                    and results_df[
                        (results_df["in_stopping_pipeline"] == True) &
                        (results_df["dev_group"] == g) &
-                       results_df["omega"].notna()
+                       results_df["omega"].notna() &
+                       results_df["p_biased"].notna()
                    ].shape[0] > 0]
 
 for grp in overview_groups:
@@ -592,11 +662,20 @@ for grp in overview_groups:
         results_df[
             (results_df["in_stopping_pipeline"] == True) &
             (results_df["dev_group"] == grp) &
-            results_df["omega"].notna()
+            results_df["omega"].notna() &
+            results_df["p_biased"].notna()   # exclude NaN p (exhausted population)
         ]
         .sort_values("p_biased", na_position="last")
         .reset_index(drop=True)
     )
+    # Track NaN-p countries for footnote
+    nan_p_grp = results_df[
+        (results_df["in_stopping_pipeline"] == True) &
+        (results_df["dev_group"] == grp) &
+        results_df["omega"].notna() &
+        results_df["p_biased"].isna()
+    ]["country"].tolist()
+
     ng = len(grp_df)
     if ng == 0:
         continue
@@ -626,10 +705,12 @@ for grp in overview_groups:
     ax_pg.set_xlabel("p-value  (biased urn)  <--  lower = more confident", fontsize=9)
     ax_pg.set_xlim(0, 1.35)
     ax_pg.grid(axis="x", alpha=0.2)
+    nan_grp_note = (f"\n{', '.join(nan_p_grp)}: p=NaN (all UCDB cities reviewed, excluded)"
+                    if nan_p_grp else "")
     ax_pg.set_title(
         f"Stopping criterion  ·  {grp}\n"
         f"{RECALL_TARGET*100:.0f}% recall  ·  {CONFIDENCE*100:.0f}% confidence  ·  "
-        f"p={P_STOP} threshold  ·  {n_stopped_g}/{ng} stopped",
+        f"p={P_STOP} threshold  ·  {n_stopped_g}/{ng} stopped{nan_grp_note}",
         fontsize=9
     )
     ax_wg.set_xlabel("omega  (within-country odds ratio)", fontsize=9)

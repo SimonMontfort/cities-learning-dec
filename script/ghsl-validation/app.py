@@ -35,6 +35,7 @@ from config import (
     SCORE_WEIGHTS, CATEGORIES, MODIS_PFT_COLORS, FLASK_PORT, FLASK_DEBUG,
 )
 INDICATORS_PATH = DATA_PATH.parent / "country_indicators.csv"
+STOPPING_PATH   = DATA_PATH.parent / "country_stopping_summary.csv"
 CHIPS_DIR       = DATA_PATH.parent / "chips"   # pre-rendered PNGs from prerender_chips.py
 
 # ── App ────────────────────────────────────────────────────────
@@ -543,6 +544,7 @@ def get_city(city_index):
     return jsonify({
         "total":            total,
         "reviewed":         reviewed,
+        "id":               city.get("id", ""),
         "city_name":        city.get("city_name", ""),
         "country":          city.get("country", ""),
         "country_iso3":     city.get("country_iso3", ""),
@@ -719,6 +721,48 @@ def export():
         "ambiguous":       ambiguous,
         "dropped":         dropped,
     })
+
+
+@app.route("/api/country_stopping/<path:country>")
+def country_stopping(country):
+    """
+    Return stopping-criterion status for a country from country_stopping_summary.csv
+    (written by E1). Read fresh on each call so the UI reflects the latest pipeline
+    run without requiring an app restart.
+    """
+    import pandas as pd
+    if not STOPPING_PATH.exists():
+        return jsonify({"available": False})
+    try:
+        df  = pd.read_csv(STOPPING_PATH)
+        row = df[df["country"] == country]
+        if row.empty:
+            return jsonify({"available": False})
+        row = row.iloc[0]
+
+        def _f(v):
+            try:
+                f = float(v)
+                return None if (f != f) else round(f, 4)  # NaN → None
+            except Exception:
+                return None
+
+        return jsonify({
+            "available":      True,
+            "in_pipeline":    str(row.get("in_stopping_pipeline", "")).strip().lower()
+                              not in ("false", "0", ""),
+            "can_stop":       str(row.get("can_stop_biased", "")).strip().lower()
+                              in ("true", "1"),
+            "p_biased":       _f(row.get("p_biased")),
+            "p_conservative": _f(row.get("p_conservative")),
+            "omega":          _f(row.get("omega")),
+            "n_fps":          int(float(row.get("n_fps",        0) or 0)),
+            "n_reviewed":     int(float(row.get("n_reviewed",   0) or 0)),
+            "n_queue":        int(float(row.get("n_queue",      0) or 0)),
+            "n_ucdb":         int(float(row.get("n_ucdb_total", 0) or 0)),
+        })
+    except Exception as e:
+        return jsonify({"available": False, "error": str(e)})
 
 
 @app.route("/api/country_context/<path:country>")

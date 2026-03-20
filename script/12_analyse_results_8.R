@@ -1678,7 +1678,7 @@ fig1_bc <- ggarrange(p_attr_cluster_bar,
 
 fig1 <- ggarrange(base, fig1_bc, labels = c("a", ""), widths = c(1.4,1))
 ggsave(fig1, file = "plots/fig1.pdf", width = 10, height = 10)
-
+ 
 
 ################################################################################
 # assignment probabilities (Extended Data Fig X)

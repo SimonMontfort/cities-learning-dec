@@ -288,8 +288,17 @@ def main():
 
         # Determine batch size from E2 status
         if status == "extrapolated" and pd.notna(n_more):
-            n_add_est  = int(n_more)
-            batch_src  = f"E2 (R2={r2:.2f})" if pd.notna(r2) else "E2"
+            n_add_est = int(n_more)
+            if n_add_est == 0:
+                # Boundary case: extrapolation projects stopping at or before
+                # current position, but p_biased is still > P_STOP (just barely).
+                # A single new city provides almost no evidence. Add a small
+                # buffer so there's enough signal to either cross the threshold
+                # or reveal the trend was wrong.
+                n_add_est = DEFAULT_SMALL_BATCH
+                batch_src = f"E2 (R2={r2:.2f}) +buffer"
+            else:
+                batch_src = f"E2 (R2={r2:.2f})" if pd.notna(r2) else "E2"
         elif status == "full_tail_required":
             # Linear trend too shallow to reach p_stop within remaining cities.
             # Add everything available up to cap.
