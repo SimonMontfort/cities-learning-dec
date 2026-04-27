@@ -1,0 +1,1118 @@
+R.version
+# _                           
+# platform       aarch64-apple-darwin20      
+# arch           aarch64                     
+# os             darwin20                    
+# system         aarch64, darwin20           
+# status                                     
+# major          4                           
+# minor          3.2                         
+# year           2023                        
+# month          10                          
+# day            31                          
+# svn rev        85441                       
+# language       R                           
+# version.string R version 4.3.2 (2023-10-31)
+# nickname       Eye Holes    
+
+rm(list = ls())
+
+setwd("/Users/simon/Documents/repo/cities-learning-dec")
+
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(sf)
+library(arrow)
+library(rnaturalearth)
+library(showtext)
+library(scales)
+library(ggpubr)
+library(openxlsx2)
+
+##########################
+# load and transform data
+##########################
+
+# ghsl + clustering data
+clust <- read.csv("data/clustering_results/dec_clusters_k4.csv") %>% as_tibble()
+ghsl <- read_sf("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg")
+ghsl_clean <- read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included+.parquet")
+
+# world data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+bb <- ne_download(type = "wgs84_bounding_box", category = "physical", returnclass = "sf") 
+
+# IPCC data
+cites_ipcc_regions <- read.csv("data/IPCC-WGII-continental-regions_shapefile/cities_ids_with_ipcc_regions.csv")  %>% as_tibble()
+ipcc_cont <- st_read("data/IPCC-WGII-continental-regions_shapefile")
+
+# studies per city
+clean_places <- read.csv("data/geoparser/clean_places_augmented.csv") %>% as_tibble()
+
+# main vs mixed type
+main_mixed <- read.csv("data/clustering_results/type_main_mixed.csv") %>% select(-1) %>% as_tibble() %>% rename(city_id = ID_UC_G0)
+
+# OpenAlex data
+file_names <- list.files(
+  path = "/Users/simon/Documents/repo/cities-learning/data/OpenAlex/05_deduplicated",
+  pattern = "^city_works_df_NA_abstr_added_dedup_\\d+\\.csv$",
+  full.names = TRUE
+)
+df_list <- lapply(file_names, read.csv)
+oa <- do.call(rbind, df_list)
+
+# project to robinson
+proj_robin <- "+proj=robin"
+ghsl <- st_transform(ghsl, proj_robin)
+ipcc_cont <- st_transform(ipcc_cont, proj_robin)
+bb <- st_transform(bb, proj_robin)
+world <- st_transform(world, proj_robin)
+
+cluster_names <- data.frame(
+  consensus_label_majority = 0:3,
+  cluster_name = c(
+    "Type 2",
+    "Type 3",
+    "Type 1", 
+    "Type 4"
+  )) %>% 
+  mutate(cluster_name = factor(cluster_name, levels = c("Type 1",
+                                                        "Type 2",
+                                                        "Type 3",
+                                                        "Type 4"))) 
+
+##########################
+# custom plotting theme 
+##########################
+
+# Load and register a modern font (e.g., Helvetica Neue)
+showtext_auto()  # Automatically use showtext for fonts
+
+# Check available fonts
+# remotes::install_github("kjhealy/myriad")
+# myriad::import_myriad(font_family = "Myriad Pro", silent = F)
+theme_SM <- function(){
+  theme_light() +   
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(colour = "grey50", fill=NA, linewidth=.5),
+          strip.placement = "outside",
+          # text = element_text(size = 12, family = "Myriad Pro"),
+          axis.text.x = element_text(colour = "grey30", angle = 45, hjust = 1, vjust = 1),
+          axis.text.y = element_text(colour = "grey30"),
+          axis.ticks.length = unit(.2, "cm"),
+          axis.ticks = element_line(colour = "grey50", linewidth=.5),
+          strip.background = element_rect(fill = "white"),
+          strip.text = element_text(colour = "black"),
+          strip.clip = "off",
+          legend.text = element_text(size = 7),
+          legend.key.size = unit(.4, "cm"),
+          legend.position = c(0.9,.05),
+          legend.margin = margin(rep(2, 4)),
+          legend.title = element_blank(),
+          legend.justification = c(1, 0),
+          legend.background = element_rect(fill="white", 
+                                           size=.3, linetype="solid", 
+                                           colour ="grey")
+    )
+}
+
+##########################
+# rename ids for easy joins
+##########################
+
+ghsl <- ghsl %>% rename(city_id = ID_UC_G0)
+ghsl_clean <- ghsl_clean %>% rename(city_id = GHS_urban_area_id)
+clust <- clust %>% rename(city_id = GHS_urban_area_id)
+cites_ipcc_regions <- cites_ipcc_regions %>% rename(city_id = ID_UC_G0) %>% select(-X)
+
+ghsl <- ghsl %>% 
+  mutate(geom = st_centroid(geom))
+
+##########################
+# studies per city
+##########################
+
+clean_places <- clean_places %>% 
+  filter((city_word_match_yes | city_intersects_yes) %in% TRUE) %>%
+  filter(id %in% oa$id) %>% # only deduplicated count
+  mutate(city_id = ifelse(is.na(city_intersection_id), city_word_match_id, city_intersection_id)) %>% 
+  select(id, city_id) %>% 
+  distinct() 
+
+n_studies_per_city <- clean_places %>% 
+  group_by(city_id) %>% 
+  summarise(n_studies = n())
+
+####################################################
+# case selection: prepare data
+####################################################
+
+clust_stud_pop <- clust %>% 
+  dplyr::select(city_id, consensus_label_majority, starts_with("mean_prob_cluster_")) %>%
+  pivot_longer(
+    cols = starts_with("mean_prob_cluster_"),
+    names_to = "cluster",
+    values_to = "probability"
+  ) %>%
+  mutate(cluster = as.numeric(gsub("mean_prob_cluster_", "", cluster))) %>% 
+  filter(consensus_label_majority == cluster) %>% 
+  select(city_id, consensus_label_majority, probability) %>% 
+  left_join(ghsl %>% as_tibble() %>% select(city_id, GC_POP_TOT_2025, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = "city_id") %>% 
+  left_join(n_studies_per_city, by = "city_id") %>% 
+  left_join(cluster_names, by = "consensus_label_majority") %>% 
+  mutate(n_studies = ifelse(is.na(n_studies), 0, n_studies)) %>% 
+  rename(pop = GC_POP_TOT_2025,
+         city_name = GC_UCN_MAI_2025,
+         country = GC_CNT_GAD_2025) %>% 
+  mutate(pop = round(pop/1000000,3)) %>% 
+  left_join(cites_ipcc_regions, by = "city_id")
+
+write.csv(clust_stud_pop, "data/clustering_results/cities_by_regional_type_clean.csv")
+
+# ################################################################################
+# # overall over and under-researched by cluster
+# ################################################################################
+# 
+# shares_long <- clust_stud_pop %>%
+#   group_by(Region, consensus_label_majority) %>%
+#   summarise(
+#     total_studies = sum(n_studies, na.rm = TRUE),
+#     n_cities = n_distinct(city_id),
+#     total_pop = sum(pop, na.rm = TRUE),
+#     .groups = "drop"
+#   ) %>%
+#   group_by(Region) %>%
+#   mutate(
+#     research_share = total_studies / sum(total_studies),
+#     city_share = n_cities / sum(n_cities),
+#     pop_share = total_pop / sum(total_pop),
+#     research_to_city_ratio = research_share / city_share,
+#     research_to_pop_ratio = research_share / pop_share
+#   ) %>%
+#   ungroup() %>%
+#   select(Region, consensus_label_majority, research_to_city_ratio, research_to_pop_ratio) %>%
+#   pivot_longer(cols = starts_with("research_to_"), names_to = "metric", values_to = "value")
+# 
+# 
+# p_over_under <- shares_long %>% 
+#   mutate(value = ifelse(is.infinite(value) | value == 0, NA, value)) %>% 
+#   ggplot(aes(x = factor(consensus_label_majority), y = value, color = metric, shape = metric)) +
+#   geom_hline(yintercept = 1, lty = 3, col = "grey50") +
+#   geom_point(size = 3, alpha = 0.9) +
+#   scale_color_manual(values = c("#ccaf81", "#963d03")) +
+#   scale_shape_manual(values = c(1, 17)) +
+#   facet_grid( ~ Region) +
+#   labs(
+#     x = "Cluster",
+#     y = "Normalized Research Share",
+#     color = "Cluster",
+#     shape = "Cluster",
+#     title = "Normalized Research Share vs. City and Population Shares by Region and Cluster"
+#   ) +
+#   theme_SM() +
+#   scale_y_continuous(
+#     trans = "log2",
+#     breaks = c(0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32),
+#     labels = c("1/32", "1/16", "1/8", "1/4", "1/2", "1", "2", "4", "8", "16", "32"),
+#     # limits = c(0.0125, 32)
+#   ) +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# p_over_under
+# ggsave(p_over_under, file = "plots/p_over_under.pdf", width = 10, height = 5)
+
+################################################################################
+# case selection: functions
+################################################################################
+
+###### a) cites, studies, and population by cluster and region
+plot_cluster_region_heatmap <- function(data, value_col, fill_label = NULL, title = NULL, percent = FALSE, round = FALSE, low = "#fff1cc", high = "#963d03") {
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+  value_col_sym <- rlang::ensym(value_col)
+  
+  lvs_cl <- c(levels(data$cluster_name), "Total")
+  lvs_reg <- rev(c("North America", "South America", "Europe", "Africa", "Asia", "Australasia", "Small Islands", "Total"))
+  
+  # Base data
+  heatmap_data <- data %>%
+    group_by(Region, cluster_name) %>%
+    summarise(value = sum(!!value_col_sym, na.rm = TRUE), .groups = "drop") %>%
+    mutate(cluster_name = as.character(cluster_name))
+  
+  # Totals
+  row_totals <- heatmap_data %>%
+    group_by(Region) %>%
+    summarise(value = sum(value), .groups = "drop") %>%
+    mutate(cluster_name = "Total")
+  
+  col_totals <- heatmap_data %>%
+    group_by(cluster_name) %>%
+    summarise(value = sum(value), .groups = "drop") %>%
+    mutate(Region = "Total")
+  
+  # Combine
+  heatmap_data_totals <- bind_rows(heatmap_data, row_totals, col_totals)
+  
+  # Percentage transformation
+  if (percent) {
+    grand_total <- sum(heatmap_data$value, na.rm = TRUE)
+    
+    heatmap_data_totals <- heatmap_data_totals %>%
+      mutate(
+        value_pct = 100 * value / grand_total,
+        label = sprintf("%.1f%%", value_pct),
+        fill_value = value_pct
+      )
+  } else {
+    heatmap_data_totals <- heatmap_data_totals %>%
+      rowwise() %>%
+      mutate(
+        label = value,
+        label = ifelse(round == T, round(label, 1), label),
+        fill_value = value
+      )
+  }
+  
+  # Set factor levels
+  heatmap_data_totals <- heatmap_data_totals %>%
+    mutate(
+      cluster_name = factor(cluster_name, levels = lvs_cl),
+      Region = factor(Region, levels = lvs_reg)
+    )
+  
+  # Line positions
+  row_line <- 1.5
+  col_line <- 4.5
+
+  print(heatmap_data_totals %>%
+          select(Region, cluster_name, label) %>% 
+          pivot_wider(names_from = cluster_name, values_from = label))
+
+  # Plot
+  ggplot(heatmap_data_totals, aes(x = cluster_name, y = Region, fill = sqrt(fill_value))) +
+    geom_tile(color = "white", width = .95, height = .95) +
+    geom_text(aes(label = label), color = "black", size = 3.5) +
+    scale_fill_gradient(
+      low = low, high = high,
+      name = fill_label %||% if (percent) "% of Total" else rlang::as_label(value_col_sym)
+    ) +
+    labs(
+      x = "",
+      y = "",
+      title = title %||% paste0("Heatmap of ", rlang::as_label(value_col_sym), " by Cluster and Region")
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid = element_blank(),
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "none"
+    ) +
+    geom_hline(yintercept = row_line, color = "grey20", size = 0.6) +
+    geom_vline(xintercept = col_line, color = "grey20", size = 0.6)
+}
+
+
+sample_cities_by_share <- function(data, 
+                                   n_total_cities = 100, 
+                                   share_type = c("pop", "n_studies", "cities"), 
+                                   min_studies_filter = NULL) {
+  
+  share_type <- match.arg(share_type)
+  
+  # Step 1: Aggregate by cluster and region
+  share_data <- data %>%
+    group_by(consensus_label_majority, Region)
+  
+  share_data <- switch(
+    share_type,
+    "pop" = share_data %>%
+      summarise(share_value = sum(pop, na.rm = TRUE), .groups = "drop"),
+    "n_studies" = share_data %>%
+      summarise(share_value = sum(n_studies, na.rm = TRUE), .groups = "drop"),
+    "cities" = share_data %>%
+      summarise(share_value = n_distinct(city_id), .groups = "drop")
+  )
+  
+  print("=== Population shares: ===")
+  print(share_data %>% 
+          group_by(consensus_label_majority) %>% 
+          summarise(share_value = sum(share_value)) %>% 
+          mutate(share_value = share_value/sum(share_value)))
+  
+  # Step 2: Compute region totals and identify small-share regions (<1%)
+  region_totals <- share_data %>%
+    group_by(Region) %>%
+    summarise(region_value = sum(share_value), .groups = "drop") %>%
+    mutate(region_share = region_value / sum(region_value),
+           is_small = region_share < 0.01)
+  
+  print("=== Small regions identified (under 1% share): ===")
+  print(region_totals %>% filter(is_small))
+  
+  # Step 3: Assign exactly 5 cities to each small region, distributed across clusters
+  small_alloc_detailed <- share_data %>%
+    semi_join(region_totals %>% filter(is_small), by = "Region") %>%
+    group_by(Region) %>%
+    mutate(share_within_region = share_value / sum(share_value)) %>%
+    mutate(base_n = floor(5 * share_within_region),
+           remainder = 5 * share_within_region - base_n) %>%
+    arrange(desc(remainder)) %>%
+    mutate(extra = if_else(row_number() <= 5 - sum(base_n), 1, 0),
+           n_cities_sample = base_n + extra) %>%
+    ungroup() %>%
+    select(-base_n, -remainder, -extra, -share_within_region)
+  
+  print("=== Allocations for small-share regions: ===")
+  print(small_alloc_detailed %>% group_by(Region) %>% summarise(n = sum(n_cities_sample)))
+  
+  # Step 4: Remaining cities to allocate
+  n_allocated_small <- sum(small_alloc_detailed$n_cities_sample)
+  n_remaining <- n_total_cities - n_allocated_small
+  
+  print(paste("Cities allocated to small regions:", n_allocated_small))
+  print(paste("Remaining cities to allocate:", n_remaining))
+  
+  # Step 5: Allocate remaining cities to non-small regions
+  share_data_rest <- share_data %>%
+    anti_join(small_alloc_detailed, by = c("Region", "consensus_label_majority"))
+  
+  # Calculate actual population per cluster-region in full data
+  pop_per_group <- data %>%
+    semi_join(share_data_rest, by = c("Region", "consensus_label_majority")) %>%
+    group_by(consensus_label_majority, Region) %>%
+    summarise(group_pop = sum(pop, na.rm = TRUE), .groups = "drop")
+  
+  print("=== Population per region cluster cell: ===")
+  print(pop_per_group)
+  
+  total_pop_rest <- sum(pop_per_group$group_pop)
+  
+  share_data_rest <- share_data_rest %>%
+    left_join(pop_per_group, by = c("Region", "consensus_label_majority")) %>%
+    mutate(pop_share = group_pop / total_pop_rest,
+           base_n = floor(n_remaining * pop_share),
+           remainder = n_remaining * pop_share - base_n)
+  
+  n_missing <- n_remaining - sum(share_data_rest$base_n)
+  
+  share_data_rest <- share_data_rest %>%
+    arrange(desc(remainder)) %>%
+    mutate(extra = if_else(row_number() <= n_missing, 1, 0),
+           n_cities_sample = base_n + extra) %>%
+    select(-base_n, -remainder, -extra, -pop_share)
+  
+  print("=== Allocations for large-share regions: ===")
+  print(share_data_rest %>% group_by(Region) %>% summarise(n = sum(n_cities_sample)) %>% mutate(share = n/sum(n)))
+  
+  # Step 6: Combine allocations
+  final_allocations <- bind_rows(small_alloc_detailed, share_data_rest)
+  
+  # Apply n_studies filter *after allocation*, if requested
+  if (!is.null(min_studies_filter)) {
+    data <- data %>% filter(n_studies >= min_studies_filter)
+    # shortfall <- n_total_cities - nrow(eligible)
+    # print(paste("shortfall:", shortfall))
+  } 
+
+  # Step 7: Sample cities
+  sampled_data <- data %>%
+    inner_join(final_allocations, by = c("consensus_label_majority", "Region")) %>%
+    group_by(consensus_label_majority, Region) %>%
+    arrange(probability, .by_group = TRUE) %>%
+    mutate(row = row_number()) %>%
+    filter(row <= n_cities_sample) %>%
+    ungroup() %>%
+    select(-row)
+  
+  # Step 8: Ensure exactly n_total_cities are sampled
+  sampled_data <- sampled_data %>%
+    distinct(city_id, .keep_all = TRUE) %>%
+    slice_head(n = n_total_cities)
+  
+  return(sampled_data %>%
+           select(city_id, city_name, country, Region,
+                  consensus_label_majority, pop, n_studies, everything()))
+}
+
+
+plot_sample_vs_full_pop_share <- function(sampled_data, full_data, title) {
+  
+  # 1. Compute population share in sampled cities
+  sampled_region_share <- sampled_data %>%
+    group_by(Region) %>%
+    summarise(sampled_pop = sum(pop, na.rm = TRUE), .groups = "drop") %>%
+    mutate(sampled_share = sampled_pop / sum(sampled_pop))
+  
+  # 2. Compute population share in full data
+  full_region_share <- full_data %>%
+    group_by(Region) %>%
+    summarise(full_pop = sum(pop, na.rm = TRUE), .groups = "drop") %>%
+    mutate(full_share = full_pop / sum(full_pop))
+  
+  # 3. Join and compute ratio
+  comparison <- left_join(sampled_region_share, full_region_share, by = "Region") %>%
+    mutate(ratio = sampled_share / full_share)
+  
+  # 4. Compute RMSE
+  rmse <- sqrt(mean((comparison$sampled_share - comparison$full_share)^2, na.rm = TRUE))
+  
+  # 5. Plot log2 ratio with RMSE annotation
+  ggplot(comparison, aes(x = reorder(Region, ratio), y = ratio)) +
+    geom_point(size = 4, color = "steelblue") +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "gray50") +
+    scale_y_continuous(trans = "log2", labels = label_number(accuracy = 0.01)) +
+    labs(
+      title = title,
+      subtitle = paste0("RMSE = ", round(rmse, 4)),
+      x = "Region",
+      y = "log2(Sampled Share / Full Share)"
+    ) +
+    # ylim(c(.15,4.5)) +
+    theme_SM()
+}
+
+
+################################################################################
+# case selection: compute all stats 
+################################################################################
+
+# 1) Overall distribution of population, population share, cities and studies
+
+# Population
+p_pop_per_cluster_region <- plot_cluster_region_heatmap(
+  clust_stud_pop, pop, round = T,
+  title = "Population (in m)")
+
+# Population share
+p_pop_share_per_cluster_region <- plot_cluster_region_heatmap(
+  clust_stud_pop, pop, 
+  title = "Population share", 
+  percent = T)
+
+# Plot using `n_cities`
+p_cities_per_cluster_region <- plot_cluster_region_heatmap(
+  clust_stud_pop %>% mutate(city_yes = 1), 
+  city_yes, 
+  title = "Cities")
+
+# Plot using `n_studies`
+p_studies_per_cluster_region <- plot_cluster_region_heatmap(
+  clust_stud_pop, 
+  n_studies, 
+  title = "Studies")
+
+
+# 2) Cities and studies in the selection -- get selected no of representative cities and refine assignment
+
+# get cities
+sampled_cities <- sample_cities_by_share(clust_stud_pop, 500, "pop")
+
+# cities covered
+p_population_selected_covered_cities_per_cluster_region <- plot_cluster_region_heatmap(
+  sampled_cities %>% mutate(city_yes = 1),
+  city_yes,
+  title = "Selected cities",
+  low = "#deebf7",
+  high = "#08519c")
+# studies covered
+p_population_selected_covered_studies_per_cluster_region <- plot_cluster_region_heatmap(
+  sampled_cities,
+  n_studies,
+  title = "Selected studies",
+  low = "#deebf7",
+  high = "#08519c")
+
+p_selection <- ggarrange(
+  p_pop_share_per_cluster_region, p_pop_per_cluster_region, 
+  p_cities_per_cluster_region, p_studies_per_cluster_region, 
+  p_population_selected_covered_cities_per_cluster_region,
+  p_population_selected_covered_studies_per_cluster_region,
+  nrow = 3,
+  ncol = 2,
+  labels = "auto")
+ggsave(p_selection, file = "plots/p_selection.pdf", width = 10, height = 10)
+
+# # analyse biases
+# p_bias <- plot_sample_vs_full_pop_share(sampled_cities, clust_stud_pop, title = "Before iterative population-based adjustment")
+# ggsave(p_bias, file = "plots/p_selection_bias.pdf", width = 10, height = 4)
+# 
+# p_selection_map <- ghsl %>%
+#   select(city_id) %>%
+#   left_join(clust_stud_pop) %>%
+#   left_join(sampled_cities %>% mutate(sampled_yes = "In the sample") %>% select(city_id, sampled_yes)) %>%
+#   mutate(sampled_yes = ifelse(is.na(sampled_yes), "Not in the sample", sampled_yes)) %>%
+#   mutate(sampled_yes = factor(
+#     sampled_yes,
+#     levels = c("Not in the sample", "In the sample")
+#   )) %>% 
+#   ggplot() +
+#   geom_sf(data = world %>% st_union(), col = "white") +
+#   geom_sf(aes(geometry = geom,
+#               col = sampled_yes, fill = sampled_yes, alpha = sampled_yes), 
+#           lwd = 0, 
+#           size = .5
+#   ) +
+#   scale_alpha_manual(values = c(0.4, 1)) +
+#   ggrepel::geom_label_repel(
+#     data = ~ subset(., sampled_yes == "In the sample") %>% 
+#       group_by(consensus_label_majority, Region) %>% 
+#       arrange(probability, .by_group = T) %>% 
+#       slice(1:5),
+#     aes(label = city_name, geometry = geom),
+#     stat = "sf_coordinates",
+#     alpha = 0.5, size = 2, max.overlaps = 300
+#   ) +
+#   scale_color_manual(values = c( "#ffe0a3", "black")) +
+#   labs(col = "Case selection", fill = "Case selection", alpha = "Case selection") +
+#   # scale_color_gradient2(low="white", mid="#ffe0a3", high="#963d03",
+#   #                       limits = c(0, 1), oob = scales::squish) +
+#   scale_size_continuous(range = c(.05, 1)) +
+#   facet_wrap(~cluster_name) +
+#   geom_sf(data = bb, col = "grey40", fill = "transparent", linewidth = 1) +
+#   theme_SM() + labs(y = "", x = "") +
+#   theme(legend.position = c(.57,.44),
+#         legend.title = element_text(),
+#         axis.text.x = element_blank(),
+#         axis.ticks.length = unit(0, "cm"),
+#         axis.text.y = element_blank(),
+#         text = element_text(size = 8),
+#         panel.spacing = unit(-0.15, "lines"),
+#         panel.border = element_blank(),
+#         plot.margin = margin(c(-1,0,0,0), "cm")
+#   )
+# ggsave(p_selection_map, file = "plots/p_selection_map.pdf", width = 10, height = 5.8)
+# 
+# # Panel A: Distribution of n_studies across world regions
+# p_a <- ggplot(sampled_cities, aes(x = Region, y = n_studies)) +
+#   geom_boxplot(fill = "#3182bd", alpha = 0.7, outliers = FALSE) +
+#   labs(title = "Distribution of Studies by Region",
+#        x = "", y = "Number of Studies") +
+#   theme_SM() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# 
+# # Panel B: Distribution of n_studies across cluster_name (city types)
+# p_b <- ggplot(sampled_cities, aes(x = cluster_name, y = n_studies)) +
+#   geom_boxplot(fill = "#3182bd", alpha = 0.7, outliers = FALSE) +
+#   labs(title = "Distribution of Studies by City Type",
+#        x = "", y = "Number of Studies") +
+#   theme_SM() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# 
+# p_selection_n_studies <- ggarrange(p_a, p_b, labels = "auto", align = "h", widths = c(7,4))
+# ggsave(p_selection_n_studies, file = "plots/p_selection_n_studies.pdf", width = 10, height = 5)
+
+
+
+################################################################################
+# store case selection
+################################################################################
+
+# Create a new workbook
+wb <- wb_workbook()
+
+# # First sheet: Case selection
+# wb$add_worksheet("Case selection")
+# wb$add_data(
+#   sheet = "Case selection",
+#   x = sampled_cities %>%
+#     left_join(clust_stud_pop) %>%
+#     select(
+#       city_id, city_name, country, region = Region,
+#       city_type = cluster_name, number_of_studies = n_studies
+#     ) %>% 
+#     arrange(city_type, region, -number_of_studies)
+# )
+# 
+wb$save("data/case_selection/case_selection_and_literature.xlsx", overwrite = TRUE)
+
+
+
+################################################################################
+# city characteristics
+################################################################################
+
+clust_prob <- clust %>%
+  pivot_longer(
+    cols = starts_with("mean_prob_cluster_"),
+    names_to = "secondary_cluster",
+    names_prefix = "mean_prob_cluster_",
+    values_to = "mean_prob"
+  ) %>% 
+  select(-similarity, -entropy) %>% 
+  mutate(secondary_cluster = as.numeric(secondary_cluster)) %>% 
+  left_join(cluster_names, by = c("secondary_cluster"="consensus_label_majority")) %>% 
+  rename(secondary_cluster_name = cluster_name) %>% 
+  left_join(cluster_names, by = c("consensus_label_majority")) %>% 
+  select(city_id, mean_prob, secondary_cluster_name, cluster_name)
+
+clust_prob_clean <- clust_prob %>% 
+  mutate(secondary_cluster_name = paste0("assignment_probability: ", secondary_cluster_name)) %>% 
+  pivot_wider(names_from = "secondary_cluster_name", values_from = "mean_prob") %>% 
+  left_join(ghsl, by = "city_id") %>% 
+  select(city_id, cluster_name, GC_UCN_MAI_2025, GC_CNT_GAD_2025,
+         "assignment_probability: Type 1", 
+         "assignment_probability: Type 2", 
+         "assignment_probability: Type 3", 
+         "assignment_probability: Type 4"
+  ) %>% 
+  left_join(cites_ipcc_regions, by = "city_id") %>% 
+  left_join(ghsl_clean, by = "city_id") %>% 
+  left_join(n_studies_per_city, by = "city_id") %>% 
+  mutate(n_studies = ifelse(is.na(n_studies), 0, n_studies)) %>% 
+  left_join(main_mixed %>% select(-GC_UCN_MAI_2025), by = c("city_id", "cluster_name")) %>% 
+  mutate(cluster_name = ifelse(main_mixed == "mixed", "mixed", cluster_name)) %>% 
+  select(city_id, city_name = GC_UCN_MAI_2025, 
+         country_name = GC_CNT_GAD_2025, region = Region, cluster_name, main_or_mixed_type = main_mixed,
+         "assignment_probability: Type 1", 
+         "assignment_probability: Type 2", 
+         "assignment_probability: Type 3", 
+         "assignment_probability: Type 4",
+         number_of_studies = n_studies, 
+         population = GHS_population, population_growth = GHS_population_growth,
+         population_density = GHS_population_density, population_density_growth = GHS_population_density_growth,
+         old_pop_relative_to_young = GHS_old_pop, 
+         GDP_PPP = GHS_GDP_PPP, GDP_PPP_growth = GHS_GDP_PPP_growth,
+         critical_infrastructure = GHS_critical_infra,
+         female_gender_index = GHS_female_gender_index, 
+         human_development_index = GHS_HDI,
+         # greenness_index = GHS_greenness_index, precipitation = GHS_precipitation,
+         heating_degree_days = hdd, cooling_degree_days = cdd)
+  
+clust_prob_clean
+
+# Load the workbook
+wb <- wb_load("data/case_selection/case_selection_and_literature.xlsx")
+
+wb$add_worksheet("Characteristics and types")
+wb$add_data(sheet = "Characteristics and types", x = clust_prob_clean)
+
+# Save the workbook with both sheets
+wb$save("data/case_selection/case_selection_and_literature.xlsx")
+
+
+
+# ################################################################################
+# # for the paper, a lower number of cities are needed
+# ################################################################################
+# 
+# # get cities
+# sampled_cities <- sample_cities_by_share(clust_stud_pop, 70, "pop", min_studies_filter = 5)
+# 
+# # cities covered
+# p_population_selected_covered_cities_per_cluster_region <- plot_cluster_region_heatmap(
+#   sampled_cities %>% mutate(city_yes = 1), 
+#   city_yes, 
+#   title = "Selected cities",
+#   low = "#deebf7",
+#   high = "#08519c")
+# # studies covered
+# p_population_selected_covered_studies_per_cluster_region <- plot_cluster_region_heatmap(
+#   sampled_cities, 
+#   n_studies, 
+#   title = "Selected studies",
+#   low = "#deebf7",
+#   high = "#08519c")
+# 
+# p_selection <- ggarrange(
+#   p_pop_share_per_cluster_region, p_pop_per_cluster_region, 
+#   p_cities_per_cluster_region, p_studies_per_cluster_region, 
+#   p_population_selected_covered_cities_per_cluster_region,
+#   p_population_selected_covered_studies_per_cluster_region,
+#   nrow = 3,
+#   ncol = 2,
+#   labels = "auto")
+# ggsave(p_selection, file = "plots/p_selection_paper.pdf", width = 10, height = 10)
+# 
+# sampled_cities_clean <- sampled_cities %>%
+#   left_join(clust_stud_pop) %>%
+#   select(
+#     city_id, city_name, country, region = Region,
+#     city_type = cluster_name, number_of_studies = n_studies
+#   ) %>% 
+#   arrange(city_type, region, -number_of_studies)
+# write.csv(sampled_cities_clean, "data/case_selection/selected_cites_paper.csv")
+
+
+################################################################################
+# case selection simple, 100 cities per type x region
+################################################################################
+
+simple_without_research <- clust_stud_pop %>%
+  group_by(Region, cluster_name) %>% 
+  arrange(probability) %>% 
+  slice_max(probability, n = 100) %>% 
+  as.data.frame() %>% 
+  select(city_name, Region, country, cluster_name, n_studies, population_in_mio = pop, assignment_probability = probability)
+
+simple_with_research <- clust_stud_pop %>%
+  group_by(Region, cluster_name) %>% 
+  arrange(probability) %>% 
+  filter(n_studies >= 10) %>% 
+  slice_max(probability, n = 50) %>% 
+  as.data.frame() %>% 
+  select(city_name, Region, country, cluster_name, n_studies, population_in_mio = pop, assignment_probability = probability)
+
+simple_with_research <- clust_stud_pop %>%
+  group_by(Region, cluster_name) %>% 
+  arrange(-probability) %>% 
+  filter(n_studies >= 10) %>% 
+  slice_min(probability, n = 50) %>% 
+  as.data.frame() %>% 
+  select(city_name, Region, country, cluster_name, n_studies, population_in_mio = pop, assignment_probability = probability)
+
+
+write.csv(simple_without_research, "data/case_selection/10_per_continent_and_cluster.csv")
+write.csv(simple_with_research, "data/case_selection/10_simple_with_research.csv")
+
+
+get_subsets <- function(df, study_filter, n = 25) {
+  df <- df %>%
+    filter(!!study_filter) %>%
+    arrange(probability)
+  
+  total <- nrow(df)
+  if (total == 0) return(df)
+  
+  if (total >= 2 * n) {
+    # enough rows: take n from each side
+    idx_low  <- seq_len(n)
+    idx_high <- seq(total - n + 1, total)
+  } else {
+    # not enough: split available rows into two halves
+    half <- floor(total / 2)
+    idx_low  <- seq_len(half)
+    idx_high <- seq(total - half + 1, total)
+  }
+  
+  df %>%
+    slice(c(idx_low, idx_high)) %>%
+    mutate(category = c(
+      rep("low", length(idx_low)),
+      rep("high", length(idx_high))
+    )) %>%
+    mutate(main_type_percentage = paste0(round(probability*100, 0), "%")) %>% 
+    select(city_name, Region, country, main_type = cluster_name,
+           n_studies, population_in_mio = pop,
+           main_type_percentage,
+           category,
+           type_1_percentage = `assignment_probability: Type 1`, 
+           type_2_percentage = `assignment_probability: Type 2`, 
+           type_3_percentage = `assignment_probability: Type 3`, 
+           type_4_percentage = `assignment_probability: Type 4`
+           )
+}
+
+
+clust_stud_pop <- clust_stud_pop %>%
+  left_join(clust_prob_clean %>%
+              select(city_id,
+                     `assignment_probability: Type 1`, `assignment_probability: Type 2`, 
+                     `assignment_probability: Type 3`, `assignment_probability: Type 4`), 
+            by = "city_id") %>% 
+  mutate_at(vars(`assignment_probability: Type 1`, `assignment_probability: Type 2`, 
+                 `assignment_probability: Type 3`, `assignment_probability: Type 4`), .funs = function(x){paste0(round(x*100, 0), "%")})
+
+library(openxlsx)
+
+wb <- createWorkbook()
+
+wrong_cities <- c("Abu Matarig", "Kyolo", "Kisenge", "Mutabi", "Kapoeta", "Iludun", "Nsioni", "Ngodo", "Ekwegbe", "Awomama", "Jesse", "Nine Mile Corner", "Kamiji", "", "Ore", # Africa
+                  "Marapicu", "Polvilho", # South America
+                  "Bhushan Steel City", "Agats", "Qingan", "Arun", "Morin Dawa", "Dunhua", "Xiuyan", "Benxi Manchu Autonomous County", "Antu", # Asia
+                  "Koçören", "Manchester", "Sal'sk", # Europe (Manchester is incorrectly assigned no studies)
+                  "San José del Valle" # North America 
+                  ) 
+
+for (reg in unique(clust_stud_pop$Region)) {
+  
+  region_data <- clust_stud_pop %>% filter(Region == reg)
+  
+  # region_data <- region_data %>% filter(!city_name %in% wrong_cities)
+  
+  # Get subsets
+  no_study   <- get_subsets(region_data, quo(n_studies < 10),  25) %>%
+    mutate(category = ifelse(category == "low",
+                             "mixed type",
+                             "typical"),
+           less_than_10_studies = "yes")
+  
+  with_study <- get_subsets(region_data, quo(n_studies >= 10), 25) %>%
+    mutate(category = ifelse(category == "low",
+                             "mixed type",
+                             "typical"),
+           less_than_10_studies = "no")
+  
+  # Combine
+  combined <- bind_rows(no_study, with_study) %>% 
+    arrange(category, less_than_10_studies, main_type, main_type_percentage
+            )
+  
+  # combined_right <- combined
+  # combined_right$city_name[!combined_right$city_name %in% combined$city_name]
+  
+  # Add worksheet
+  addWorksheet(wb, reg)
+  writeData(wb, reg, combined)
+}
+
+# Save file
+saveWorkbook(wb, "data/clustering_results/city_probabilities_by_region.xlsx", overwrite = TRUE)
+
+################################################################################
+# Practitioner's test
+################################################################################
+
+wrong_cities <- c("Abu Matarig", "Kyolo", "Kisenge", "Mutabi", "Kapoeta", "Iludun", "Nsioni", "Ngodo", "Ekwegbe", "Awomama", "Jesse", "Nine Mile Corner", "Kamiji", "", "Ore", # Africa
+                  "Marapicu", "Polvilho", # South America
+                  "Bhushan Steel City", "Agats", "Qingan", "Arun", "Morin Dawa", "Dunhua", "Xiuyan", "Benxi Manchu Autonomous County", "Antu", # Asia
+                  "Koçören", "Manchester", "Sal'sk", # Europe (Manchester is incorrectly assigned no studies)
+                  "San José del Valle" # North America 
+                  
+                  ,"Thawe", "Sathiya", "Kebonan", "Nurrār", "Purworejo", "Kertasari", "Coari", "Al Beidha", "Phulbaria", "Baneshwar", "Dogari Tiv",
+                  "Funan", "Dawu", "Xiaoxian", "Kuqa", "Xindai", "Fumin", "Manazil Baradan", "Yutian", "Huating", "Mudanya", "Qianxi", "Khrew", "Shangyou", "El Alamito",
+                  "Xiongyue", "Wangqing", "Ilaga", "Enarotali", "Yixian", "Liangcheng", "Onitsha", "Тимофеевка",
+                  "Imehejek", "Шелепино", "`Adan Barakah", "Titi", "Panguila", "Kasaï-Oriental", "Buco-Zau"
+                  
+) 
+
+set.seed(1)
+pract_test <- clust_prob_clean %>%
+  group_by(cluster_name) %>%
+  sample_n(100) 
+
+pract_test_cleaned <- pract_test %>% 
+  filter(!city_name %in% wrong_cities) %>% 
+  slice(1:50)
+
+# tm_shape(ghsl %>% filter(GC_UCN_MAI_2025 == "Kaduna")) + tm_dots()
+
+pract_test_hand_selected <- clust_prob_clean %>% 
+  filter((city_name == "Udaipur" & country_name == "India" & city_id == 6692)
+         | city_name == "Agra" 
+         | city_name == "Freetown" 
+         | city_name == "Basra" 
+         | city_name == "Maracaibo" 
+         | city_name == "Harare" 
+         | city_name == "Monrovia" 
+         | city_name == "N'Djamena" 
+         | city_name == "Port-au-Prince" 
+         | city_name == "Nouakchott" 
+         | city_name == "Mombasa" 
+         | city_name == "San Salvador" 
+         | city_name == "Beirut" 
+         | city_name == "Manama" 
+         | city_name == "Papeete" 
+         | city_name == "Tangier" 
+         | city_name == "Bridgetown" 
+         | city_name == "Asuncion" 
+         | city_name == "Nassau" 
+         | city_name == "Marrakesh" 
+         | city_name == "Funchal" 
+         | city_name == "Zanzibar City" 
+         | city_name == "Lilongwe" 
+         | city_name == "Al-Kaf" 
+         | (city_name == "Blantyre" & country_name == "Malawi")
+         | city_name == "Homs" 
+         | city_name == "Samarqand" 
+         | city_name == "Baoding" 
+         | city_name == "Port Said" 
+         | city_name == "Saint-Denis" 
+         | city_name == "Kaduna" 
+         | city_name == "Kaduna" 
+         | city_name == "N'Djamena"
+         | city_name == "Sialkot"
+         | city_name == "Niamey"
+         | city_name == "Rajkot"
+         | city_name == "Jodhpur"
+         | city_name == "Gwalior"
+         | city_name == "Port of Spain"
+         | city_name == "Paramaribo"
+         | city_name == "Zhangzhou"
+         | city_name == "Taizhou"
+         | city_name == "Liuzhou"
+         | city_name == "Mysuru"
+         | city_name == "Dehradun"
+         | city_name == "Bucaramanga"
+         | city_name == "Kaduna"
+         | city_name == "Sialkot"
+         | city_name == "Paris"
+         | city_name == "München"
+         | city_name == "Berlin"
+         | city_name == "Lausanne"
+         | city_name == "Sylhet"
+         | city_name == "Khulna"
+         | city_name == "Mataram"
+         | city_name == "Oleh"
+         | city_name == "Basel"
+  ) %>% 
+  as.data.frame() %>% 
+  arrange(city_name)
+
+comments <- read_xlsx("data/practitioner_validation/practitioner_validation_comment.xlsx")
+comments <- comments %>% select(city_id, internet_source)
+
+pract_test_cleaned <- pract_test_cleaned %>% 
+  mutate(
+    prob = case_when(
+      cluster_name == "Type 1" ~ `assignment_probability: Type 1`,
+      cluster_name == "Type 2" ~ `assignment_probability: Type 2`,
+      cluster_name == "Type 3" ~ `assignment_probability: Type 3`,
+      cluster_name == "Type 4" ~ `assignment_probability: Type 4`,
+      TRUE ~ NA_real_
+    )
+  ) %>% 
+  ungroup()
+
+
+pract_test_cleaned <- bind_rows(pract_test_hand_selected, pract_test_cleaned) %>% 
+  arrange(region, cluster_name, -population) %>%
+  select(-prob) %>% 
+  left_join(comments, by ="city_id") %>% 
+  filter(!duplicated(city_id)) %>% 
+  mutate(
+    population = round(population /1e6, 3),
+    population_density = round(population_density /1e6, 3)
+  ) %>% 
+  as_tibble()
+
+
+vars <- c(
+  "population", "population_growth",
+  "population_density", "population_density_growth",
+  "old_pop_relative_to_young", "GDP_PPP", "GDP_PPP_growth",
+  "critical_infrastructure", "female_gender_index",
+  "human_development_index", "heating_degree_days", "cooling_degree_days"
+)
+
+wb <- createWorkbook()
+addWorksheet(wb, "pract valid")
+
+writeData(wb, "pract valid", pract_test_cleaned)
+
+# ---- Freeze top row ----
+freezePane(wb, "pract valid", firstRow = TRUE)
+
+# ---- Header style: 45-degree rotation ----
+header_style <- createStyle(
+  textRotation = 45,
+  halign = "center",
+  valign = "bottom",
+  wrapText = TRUE
+)
+
+addStyle(
+  wb, "pract valid",
+  style = header_style,
+  rows = 1,
+  cols = 1:ncol(pract_test_cleaned),
+  gridExpand = TRUE,
+  stack = TRUE
+)
+
+setRowHeights(
+  wb,
+  sheet = "pract valid",
+  rows = 1,
+  heights = 130   # ≈ 134 pixels
+)
+
+# ---- Bold border around entire table ----
+table_border_style <- createStyle(
+  border = "TopBottomLeftRight",
+  borderStyle = "thin",
+  borderColour = "black"
+)
+
+addStyle(
+  wb,
+  sheet = "pract valid",
+  style = table_border_style,
+  rows = 1:(nrow(pract_test_cleaned) + 1),
+  cols = 1:ncol(pract_test_cleaned),
+  gridExpand = TRUE,
+  stack = TRUE
+)
+
+# ---- Reduce column widths ----
+# narrow numeric columns, wider ID columns
+default_widths <- rep(10, ncol(pract_test_cleaned))
+names(default_widths) <- names(pract_test_cleaned)
+
+default_widths[vars] <- 6          # heatmap-style numeric cols
+default_widths["cluster_name"] <- 5.67
+default_widths["main_or_mixed_type"] <- 7.83
+default_widths["assignment_probability: Type 1"] <- 4.67
+default_widths["assignment_probability: Type 2"] <- 4.67
+default_widths["assignment_probability: Type 3"] <- 4.67
+default_widths["assignment_probability: Type 4"] <- 4.67
+default_widths["number_of_studies"] <- 5.33
+default_widths["city_id"] <- 5.33
+
+setColWidths(
+  wb,
+  sheet = "pract valid",
+  cols = 1:ncol(pract_test_cleaned),
+  widths = default_widths
+)
+
+# ---- Colour scales ----
+col_idx <- match(vars, names(pract_test_cleaned))
+col_idx <- col_idx[!is.na(col_idx)]
+
+n <- nrow(pract_test_cleaned)
+data_rows <- 2:(n + 1)
+
+for (j in col_idx) {
+  conditionalFormatting(
+    wb, "pract valid",
+    cols = j,
+    rows = data_rows,
+    type = "colourScale",
+    style = c("#F7FBFF", "#08306B")  
+  )
+}
+
+prob_vars <- c(
+  "assignment_probability: Type 1",
+  "assignment_probability: Type 2",
+  "assignment_probability: Type 3",
+  "assignment_probability: Type 4"
+)
+
+prob_col_idx <- match(prob_vars, names(pract_test_cleaned))
+prob_col_idx <- prob_col_idx[!is.na(prob_col_idx)]
+
+for (j in prob_col_idx) {
+  conditionalFormatting(
+    wb,
+    sheet = "pract valid",
+    cols = j,
+    rows = data_rows,
+    type = "colourScale",
+    style = c("#FFFFFF", "#2CA25F")  
+  )
+}
+
+prob_col_idx <- match("number_of_studies", names(pract_test_cleaned))
+prob_col_idx <- prob_col_idx[!is.na(prob_col_idx)]
+
+for (j in prob_col_idx) {
+  conditionalFormatting(
+    wb,
+    sheet = "pract valid",
+    cols = j,
+    rows = data_rows,
+    type = "colourScale",
+    style = c("#FFFFFF", "darkred"),
+    rule  = c(0, 100)
+  )
+}
+
+saveWorkbook(
+  wb,
+  "data/practitioner_validation/practitioner_validation_final.xlsx",
+  overwrite = TRUE
+)
+
