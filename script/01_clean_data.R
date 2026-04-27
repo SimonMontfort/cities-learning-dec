@@ -124,10 +124,15 @@ rev <- read.csv("data/ghsl_appraisal/cities_review.csv") %>% as_tibble()
 
 cities_clean_sub <- cities_clean %>% 
   left_join(modis, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  left_join(rev %>% select(id, decision), by = c("GHS_urban_area_id" = "id")) %>%
-  filter(share_urban != 0 
-         # & !decision %in% c("drop", "ambiguous")
-         )
+  left_join(rev %>% select(id, decision), by = c("GHS_urban_area_id" = "id")) %>% 
+  filter(
+    # share_urban != 0 &
+     !decision %in% c("drop", "ambiguous")
+         ) %>% 
+  filter(!GHS_urban_area_id %in% c(3365, 4120, 1983)) %>% # unrealistic pop density
+  filter(!GHS_urban_area_id %in% c(4893, 851, 3144, 6268, 2214)) %>% # unrealistic pop growth rates
+  filter(!GHS_urban_area_id %in% c(4903, 5370, 8657, 10792, 7583)) # pop growth and gdp growth decoupling severely: unrealistic
+
 
 cities_clean_sub <- cities_clean_sub %>%
   select(all_of(variables), GHS_urban_area_id)

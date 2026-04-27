@@ -511,11 +511,16 @@
 <!-- List modal -->
 <div id="list-modal">
   <div id="list-inner">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
       <h2 style="font-size:13px;">All Cities</h2>
       <button class="nav-btn" id="close-modal">Close ✕</button>
     </div>
-    <div id="city-list-container" style="max-height:65vh;overflow-y:auto;"></div>
+    <div style="margin-bottom:8px;">
+      <input id="list-search" type="text" placeholder="Search by ID, city name or country…"
+             style="width:100%;background:var(--surface);border:1px solid var(--border);
+                    color:var(--text);padding:5px 9px;border-radius:var(--radius);font-size:12px;">
+    </div>
+    <div id="city-list-container" style="max-height:calc(65vh - 36px);overflow-y:auto;"></div>
   </div>
 </div>
 
@@ -886,6 +891,7 @@ async function submitDecision(decision) {
   closeAllPopovers();
   document.getElementById('note-input').value = '';
   updateProgress(data.reviewed, data.total);
+  invalidateCityListCache();
   setTimeout(() => {
     const nextIdx = _navMode === 'sequential'
       ? (data.next_sequential !== null && data.next_sequential !== undefined
@@ -977,23 +983,31 @@ document.querySelectorAll('.sub-btn').forEach(btn => {
 document.getElementById('btn-prev').addEventListener('click',      () => navigate(-1));
 document.getElementById('btn-next').addEventListener('click',      () => navigate(1));
 
-document.getElementById('btn-list').addEventListener('click', async () => {
-  document.getElementById('list-modal').style.display = 'block';
-  const list = await fetch('/api/city_list').then(r => r.json());
-  const SIG = {green:'🟢', yellow:'🟡', red:'🔴', '':''};
+let _cityList = null;  // cached after first fetch
 
-  // Sort: country A→Z, then score descending within country
-  const sorted = [...list].sort((a, b) => {
+function renderCityList(filter) {
+  const SIG = {green:'🟢', yellow:'🟡', red:'🔴', '':''};
+  const q = (filter || '').trim().toLowerCase();
+
+  // Sort: country A→Z, score desc within country
+  const sorted = [..._cityList].sort((a, b) => {
     const cc = a.country.localeCompare(b.country);
     if (cc !== 0) return cc;
     return parseFloat(b.score) - parseFloat(a.score);
   });
 
-  // Render with country group headers
+  // Filter: match ID (exact or prefix), city name, or country
+  const filtered = q ? sorted.filter(c =>
+    String(c.id).toLowerCase().startsWith(q) ||
+    c.city_name.toLowerCase().includes(q) ||
+    c.country.toLowerCase().includes(q)
+  ) : sorted;
+
   let html = '';
   let lastCountry = null;
-  for (const c of sorted) {
-    if (c.country !== lastCountry) {
+  for (const c of filtered) {
+    // Country header — only when not filtering (filtering flattens the list)
+    if (!q && c.country !== lastCountry) {
       lastCountry = c.country;
       const countryGroup = sorted.filter(x => x.country === c.country);
       const nPending = countryGroup.filter(x => !x.decision).length;
@@ -1005,14 +1019,16 @@ document.getElementById('btn-list').addEventListener('click', async () => {
           · ${countryGroup.length} cities · ${nPending} pending
         </span></div>`;
     }
+    const idStr = c.id !== '' && c.id !== undefined ? String(c.id) : '—';
     html += `
     <div onclick="loadCity(${c.index}); document.getElementById('list-modal').style.display='none';"
          style="display:flex;align-items:center;gap:8px;padding:4px 8px 4px 16px;cursor:pointer;
                 border-bottom:1px solid var(--border);
                 background:${c.index===currentIndex?'var(--surface2)':''}"
          onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${c.index===currentIndex?'var(--surface2)':"''"}">
-      <span style="color:var(--muted);font-size:10px;min-width:30px">#${c.index+1}</span>
-      <span style="flex:1;font-weight:${c.index===currentIndex?700:400};font-size:11px">${c.city_name}</span>
+      <span style="color:var(--muted);font-size:9px;min-width:26px">#${c.index+1}</span>
+      <span style="color:var(--muted);font-size:9px;min-width:52px;font-family:monospace">${idStr}</span>
+      <span style="flex:1;font-weight:${c.index===currentIndex?700:400};font-size:11px">${c.city_name}${q && !c.country.toLowerCase().includes(q) ? ` <span style="font-size:9px;color:var(--muted)">${c.country}</span>` : ''}</span>
       <span>${SIG[c.wiki_signal]||''}</span>
       <span style="font-size:10px;color:var(--muted)">Score: ${parseFloat(c.score).toFixed(3)}</span>
       <span style="font-size:10px;min-width:58px;text-align:right;color:${
@@ -1020,14 +1036,33 @@ document.getElementById('btn-list').addEventListener('click', async () => {
         c.decision==='ambiguous'?'var(--yellow)':'var(--muted)'}">${c.decision||'pending'}</span>
     </div>`;
   }
-  document.getElementById('city-list-container').innerHTML = html;
 
-  // Scroll the current city into view
+  if (filtered.length === 0)
+    html = `<div style="padding:16px;text-align:center;color:var(--muted);font-size:11px;">No results for "${q}"</div>`;
+
+  document.getElementById('city-list-container').innerHTML = html;
+}
+
+document.getElementById('btn-list').addEventListener('click', async () => {
+  document.getElementById('list-modal').style.display = 'block';
+  document.getElementById('list-search').value = '';
+  if (!_cityList) {
+    _cityList = await fetch('/api/city_list').then(r => r.json());
+  }
+  renderCityList('');
+  // Scroll current city into view
   setTimeout(() => {
     const active = document.querySelector('#city-list-container [style*="font-weight:700"]');
     if (active) active.scrollIntoView({ block: 'center' });
   }, 50);
 });
+
+document.getElementById('list-search').addEventListener('input', e => {
+  if (_cityList) renderCityList(e.target.value);
+});
+
+// Invalidate cache after a decision so the list stays fresh
+function invalidateCityListCache() { _cityList = null; }
 document.getElementById('close-modal').addEventListener('click', () => {
   document.getElementById('list-modal').style.display = 'none';
 });
@@ -1262,6 +1297,7 @@ function loadStoppingStatus(country) {
 
       const pVal        = d.p_biased !== null ? d.p_biased.toFixed(3) : 'n/a';
       const MIN_REVIEWED = 10;  // must match E1 MIN_REVIEWED
+      const exhausted   = d.p_biased === null && d.n_reviewed >= d.n_ucdb && d.n_ucdb > 0;
       statFps.innerHTML = `<b>${d.n_fps}</b> FP`;
       statRev.innerHTML = `<b>${d.n_reviewed}</b> / <b>${d.n_queue}</b> reviewed`;
       statOmg.innerHTML = d.omega !== null ? `ω = <b>${d.omega.toFixed(1)}</b>` : '';
@@ -1278,6 +1314,12 @@ function loadStoppingStatus(country) {
         label.textContent     = `${country} · insufficient data`;
         pPill.textContent     = `${d.n_reviewed} / ${MIN_REVIEWED} min`;
         pPill.className       = 'stop-p continuing';
+      } else if (exhausted) {
+        banner.className      = 'stopped';
+        icon.textContent      = '∅';
+        label.textContent     = `${country} · all UCDB cities reviewed`;
+        pPill.textContent     = 'exhausted';
+        pPill.className       = 'stop-p stopped';
       } else if (d.can_stop) {
         banner.className      = 'stopped';
         icon.textContent      = '✓';
@@ -1311,6 +1353,12 @@ function loadStoppingStatus(country) {
         line.style.color          = 'var(--muted)';
         line.textContent          = `⧖ Insufficient data`;
         detail.textContent        = `${d.n_reviewed} / ${MIN_REVIEWED} min reviewed needed`;
+      } else if (exhausted) {
+        block.style.background    = 'rgba(62,207,122,0.08)';
+        block.style.borderColor   = 'rgba(62,207,122,0.4)';
+        line.style.color          = 'var(--green)';
+        line.textContent          = '∅ All UCDB cities reviewed';
+        detail.textContent        = `${d.n_fps} FP / ${d.n_reviewed} reviewed — population exhausted, p undefined`;
       } else if (d.can_stop) {
         block.style.background    = 'rgba(62,207,122,0.08)';
         block.style.borderColor   = 'rgba(62,207,122,0.4)';

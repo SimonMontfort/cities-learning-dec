@@ -577,7 +577,7 @@ def get_city(city_index):
 def get_city_list():
     cities = load_cities()
     return jsonify([{
-        "index": i, "city_name": c.get("city_name", ""),
+        "index": i, "id": c.get("id", ""), "city_name": c.get("city_name", ""),
         "country": c.get("country", ""), "score": c.get("score", ""),
         "decision": c.get("decision", ""), "category": c.get("category", ""),
         "wiki_signal": c.get("wiki_signal", ""),

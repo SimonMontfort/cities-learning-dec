@@ -56,8 +56,8 @@ OUT_CSV    = os.path.join(TABLE_DIR, "country_stopping_summary.csv")
 
 MIN_REVIEWED  = 10
 MIN_FPS       = 1
-RECALL_TARGET = 0.90   # keep in sync with E2
-CONFIDENCE    = 0.90   # keep in sync with E2
+RECALL_TARGET = 0.90   # in sync with E2
+CONFIDENCE    = 0.90   # in sync with E2
 P_STOP        = round(1 - CONFIDENCE, 10)   # 0.10
 
 # Countries in these groups are NOT expanded by E3.
@@ -517,13 +517,13 @@ for i, row in cov_df.iterrows():
     ax_b.barh(i, row["fp_share"] * 100, height=height,
               color=color, alpha=0.85, hatch=hatch, edgecolor="white")
     ax_b.text(row["fp_share"] * 100 + 0.4, i,
-              f"{row['fp_share']*100:.1f}%  ({row['n_fps']:,} FP)",
+              f"{row['fp_share']*100:.1f}%\n({row['n_fps']:,} FP)",
               va="center", fontsize=8, color="#333")
 
 ax_a.set_yticks(y_pos)
 ax_a.set_yticklabels(cov_df["group"].tolist(), fontsize=9)
 ax_a.set_xlabel("Cities", fontsize=9)
-ax_a.set_title("Cities reviewed vs total UCDB\n(solid = reviewed, faded = unreviewed)", fontsize=9)
+ax_a.set_title("Cities reviewed vs total UCDB", fontsize=9)
 ax_a.grid(axis="x", alpha=0.2)
 
 ax_b.set_yticks(y_pos)
@@ -647,6 +647,60 @@ print(f"  Saved: {overview_path}")
 # ── Overview stopping criteria — split by development group ───────────────────
 # Same two-panel layout as above but one file per dev group so panels are
 # legible even when a group has many countries.
+#
+# After saving individual files, the three income-group panels are composited
+# into a single multi-panel figure labelled (a), (b), (c).
+
+def _exclusion_note(grp):
+    """
+    Build a note listing countries in `grp` that are absent from the bar chart,
+    grouped by exclusion reason.
+    """
+    grp_all = results_df[results_df["dev_group"] == grp]
+    in_plot_idx = grp_all[
+        (grp_all["in_stopping_pipeline"] == True) &
+        grp_all["omega"].notna() &
+        grp_all["p_biased"].notna()
+    ].index
+    excluded = grp_all[~grp_all.index.isin(in_plot_idx)].sort_values("country")
+    if excluded.empty:
+        return ""
+
+    buckets = {
+        "fewer than 10 cities in UCDB": [],
+        "no false positives found":     [],
+        "not yet reviewed":             [],
+        "population exhausted":         [],
+        "other":                        [],
+    }
+
+    for _, row in excluded.iterrows():
+        n_ucdb = int(row["n_ucdb_total"]) if pd.notna(row.get("n_ucdb_total")) else 0
+        n_rev  = int(row["n_reviewed"])   if pd.notna(row.get("n_reviewed"))   else 0
+        fps    = int(row["n_fps"])        if pd.notna(row.get("n_fps"))        else 0
+        name   = row["country"]
+
+        if row.get("in_stopping_pipeline") == False:
+            buckets["other"].append(name)
+        elif pd.isna(row.get("p_biased")) and pd.notna(row.get("omega")):
+            buckets["population exhausted"].append(name)
+        elif n_ucdb < MIN_REVIEWED:
+            buckets["fewer than 10 cities in UCDB"].append(name)
+        elif n_rev < MIN_REVIEWED:
+            buckets["not yet reviewed"].append(f"{name} ({n_rev} rev)")
+        elif fps < MIN_FPS:
+            buckets["no false positives found"].append(name)
+        else:
+            buckets["other"].append(name)
+
+    lines = ["Countries not shown:"]
+    for label, names in buckets.items():
+        if not names:
+            continue
+        chunks = [",  ".join(names[i:i+8]) for i in range(0, len(names), 7)]
+        lines.append(f"  {label} ({len(names)}): " + "\n    ".join(chunks))
+    return "\n".join(lines)
+
 
 overview_groups = [g for g in GROUP_ORDER
                    if g not in SKIP_GROUPS and g != "-"
@@ -657,75 +711,173 @@ overview_groups = [g for g in GROUP_ORDER
                        results_df["p_biased"].notna()
                    ].shape[0] > 0]
 
+# ── Collect per-group data first so we can size the multi-panel figure ────────
+
+_panel_data = []   # list of (grp, grp_df, excl_note) for groups with data
+
 for grp in overview_groups:
     grp_df = (
         results_df[
             (results_df["in_stopping_pipeline"] == True) &
             (results_df["dev_group"] == grp) &
             results_df["omega"].notna() &
-            results_df["p_biased"].notna()   # exclude NaN p (exhausted population)
+            results_df["p_biased"].notna()
         ]
         .sort_values("p_biased", na_position="last")
         .reset_index(drop=True)
     )
-    # Track NaN-p countries for footnote
-    nan_p_grp = results_df[
-        (results_df["in_stopping_pipeline"] == True) &
-        (results_df["dev_group"] == grp) &
-        results_df["omega"].notna() &
-        results_df["p_biased"].isna()
-    ]["country"].tolist()
-
-    ng = len(grp_df)
-    if ng == 0:
+    if len(grp_df) == 0:
         continue
+    _panel_data.append((grp, grp_df, _exclusion_note(grp)))
+
+# ── Individual per-group files ─────────────────────────
+
+for grp, grp_df, excl_note in _panel_data:
+    ng = len(grp_df)
+    note_lines  = excl_note.count("\n") + 1 if excl_note else 0
+    note_margin = 0.06 + 0.018 * note_lines if excl_note else 0.02
 
     fig_h_g = max(4, ng * 0.42 + 1.5)
     fig_g, (ax_pg, ax_wg) = plt.subplots(
         1, 2, figsize=(16, fig_h_g), sharey=True,
         gridspec_kw={"width_ratios": [2, 1], "wspace": 0.04}
     )
-    yg = np.arange(ng)
     color_g = GROUP_COLORS.get(grp, "#888")
-    n_stopped_g = (grp_df["can_stop_biased"] == True).sum()
 
     for i, row in grp_df.iterrows():
         ax_pg.barh(i, row["p_biased"], height=0.65, color=color_g, alpha=0.85)
         ax_wg.barh(i, row["omega"],    height=0.65, color=color_g, alpha=0.75)
         ax_pg.text(
             min(row["p_biased"] + 0.01, 1.02), i,
-            f"{int(row['n_fps'])} FP / {int(row['n_reviewed'])} rev of {int(row['n_queue'])} q / {int(row['n_ucdb_total'])} UCDB",
+                f"{int(row['n_fps'])} FP / {int(row['n_reviewed'])} rev of "
+                f"{int(row['n_queue'])} q / {int(row['n_ucdb_total'])} UCDB  (p={row['p_biased']})",
             va="center", fontsize=6.5, color="#444"
         )
 
     ax_pg.axvline(P_STOP, color="black", linestyle="--", linewidth=1.3)
     ax_wg.axvline(1.0,    color="black", linestyle=":",  linewidth=0.9)
-    ax_pg.set_yticks(yg)
+    ax_pg.set_yticks(np.arange(ng))
     ax_pg.set_yticklabels(grp_df["country"].tolist(), fontsize=8)
     ax_pg.set_xlabel("p-value  (biased urn)  <--  lower = more confident", fontsize=9)
     ax_pg.set_xlim(0, 1.35)
     ax_pg.grid(axis="x", alpha=0.2)
-    nan_grp_note = (f"\n{', '.join(nan_p_grp)}: p=NaN (all UCDB cities reviewed, excluded)"
-                    if nan_p_grp else "")
     ax_pg.set_title(
-        f"Stopping criterion  ·  {grp}\n"
-        f"{RECALL_TARGET*100:.0f}% recall  ·  {CONFIDENCE*100:.0f}% confidence  ·  "
-        f"p={P_STOP} threshold  ·  {n_stopped_g}/{ng} stopped{nan_grp_note}",
-        fontsize=9
+        f"{RECALL_TARGET*100:.0f}% recall, {CONFIDENCE*100:.0f}% confidence, "
+        f"p={P_STOP} threshold", fontsize=9
     )
     ax_wg.set_xlabel("omega  (within-country odds ratio)", fontsize=9)
-    ax_wg.set_xlim(0, max(grp_df["omega"].max() * 1.2, 3))
+    ax_wg.set_xlim(0, 80)
     ax_wg.grid(axis="x", alpha=0.2)
     ax_wg.set_title("Scorer bias\nomega > 1 = FPs at top of ranking", fontsize=9)
 
-    plt.suptitle(f"Buscar analysis — {grp}", fontsize=11, fontweight="bold")
-    plt.tight_layout()
+    plt.suptitle(f"Stopping criterion — {grp}", fontsize=11, fontweight="bold")
+
+    if excl_note:
+        fig_g.text(0.01, 0.005, excl_note,
+                   ha="left", va="bottom", fontsize=11, color="#555",
+                   transform=fig_g.transFigure)
+
+    plt.tight_layout(rect=[0, note_margin, 1, 1])
 
     grp_slug = grp.lower().replace(" ", "_").replace("/", "_")
     grp_path = os.path.join(PLOT_DIR, f"overview_stopping_{grp_slug}.png")
     plt.savefig(grp_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  Saved: {grp_path}")
+
+# ── Multi-panel (a)(b)(c): drawn directly with GridSpec ──────────────────────
+# Row heights proportional to the number of countries in each panel so bars
+# keep the same per-country pixel height across all panels.
+
+if len(_panel_data) >= 2:
+    PANEL_LETTERS = ["a", "b", "c", "d", "e"]
+    ROW_PX        = 0.07   # inches per country row
+    HEADER_IN     = 5.5   # inches of fixed overhead per panel (titles + axes)
+    NOTE_IN       = 6   # inches reserved for exclusion note when present
+    SUPTITLE_IN   = 1   # inches for the overall figure title
+
+    panel_heights = []
+    for grp, grp_df, excl_note in _panel_data:
+        h = max(4, len(grp_df) * ROW_PX + HEADER_IN)
+        if excl_note:
+            h += NOTE_IN
+        panel_heights.append(h)
+
+    total_h = (sum(panel_heights) + SUPTITLE_IN)*.5
+    fig_mp  = plt.figure(figsize=(12, total_h))
+
+    gs = fig_mp.add_gridspec(
+        nrows=len(_panel_data), ncols=2,
+        height_ratios=panel_heights,
+        width_ratios=[2, 1],
+        hspace=0.45,
+        wspace=0.04,
+        top=1 - SUPTITLE_IN / total_h,
+        bottom=0.01,
+        left=0.12,
+        right=0.98,
+    )
+
+    for k, (grp, grp_df, excl_note) in enumerate(_panel_data):
+        ax_p = fig_mp.add_subplot(gs[k, 0])
+        ax_w = fig_mp.add_subplot(gs[k, 1], sharey=ax_p)
+        ng      = len(grp_df)
+        color_g = GROUP_COLORS.get(grp, "#888")
+
+        for i, row in grp_df.iterrows():
+            ax_p.barh(i, row["p_biased"], height=0.65, color=color_g, alpha=0.85)
+            ax_w.barh(i, row["omega"],    height=0.65, color=color_g, alpha=0.75)
+            ax_p.text(
+                min(row["p_biased"] + 0.01, 1.02), i,
+                f"{int(row['n_fps'])} FP / {int(row['n_reviewed'])} rev of "
+                f"{int(row['n_queue'])} q / {int(row['n_ucdb_total'])} UCDB  (p={row['p_biased']})",
+                va="center", fontsize=14, color="#444"
+            )
+
+        ax_p.axvline(P_STOP, color="black", linestyle="--", linewidth=1.3)
+        ax_w.axvline(1.0,    color="black", linestyle=":",  linewidth=0.9)
+        ax_p.set_yticks(np.arange(ng))
+        ax_p.set_yticklabels(grp_df["country"].tolist(), fontsize=14)
+        ax_p.set_xlabel("p-value  (biased urn)", fontsize=14)
+        ax_p.set_xlim(0, 1.35)
+        ax_p.grid(axis="x", alpha=0.2)
+        ax_p.set_title(
+            f"{grp}",
+            fontsize=14, loc="left"
+        )
+        ax_w.set_xlabel("omega  (within-country odds ratio)", fontsize=14)
+        ax_w.set_xlim(0, 80)
+        ax_w.grid(axis="x", alpha=0.2)
+        ax_w.set_title("Scorer bias", fontsize=14)
+        plt.setp(ax_w.get_yticklabels(), visible=False)
+
+        # Panel label in the top-left corner of the p-value axes
+        ax_p.text(
+            -0.01, 1.02, f"({PANEL_LETTERS[k]})",
+            transform=ax_p.transAxes,
+            fontsize=14, fontweight="bold", va="bottom", ha="right"
+        )
+
+        # Exclusion note below this panel's p-value axes
+        if excl_note:
+            ax_p.annotate(
+                excl_note,
+                xy=(0, 0), xycoords="axes fraction",
+                xytext=(0, -0.06), textcoords="axes fraction",
+                va="top", ha="left", fontsize=11, color="#666",
+                annotation_clip=False
+            )
+
+    fig_mp.suptitle(
+        "Stopping criterion by income group",
+        fontsize=12, fontweight="bold",
+        y=1 - (SUPTITLE_IN * 0.3) / total_h
+    )
+
+    mp_path = os.path.join(PLOT_DIR, "stopping_criteria_multipanel.png")
+    plt.savefig(mp_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {mp_path}")
 
 
 # ── Recall frontier grid — countries with n_fps > 0 only ─────────────────────

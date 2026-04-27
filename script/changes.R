@@ -1,4 +1,4 @@
-old <-readxl::  read_xlsx("/Users/simon/Documents/repo/cities-learning-dec/data/case_selection/case_selection_and_literature_formatted_v3.xlsx", sheet = 3)
+old <-readxl::read_xlsx("/Users/simon/Documents/repo/cities-learning-dec/data/case_selection/data_base_clean.xlsx", sheet = 2)
 
 new <- clust %>% 
   left_join(cluster_names) %>% 
@@ -7,10 +7,10 @@ new <- clust %>%
 
 
 old <- old %>% 
-  mutate(cluster_name = case_when(cluster_name == "Development first" ~ "Type 1",
-                                  cluster_name == "Urban planning first" ~ "Type 2",
-                                  cluster_name == "Mitigation first" ~ "Type 3",
-                                  cluster_name == "Mega all in" ~ "Type 4")) %>% 
+  # mutate(cluster_name = case_when(cluster_name == "Development first" ~ "Type 1",
+  #                                 cluster_name == "Urban planning first" ~ "Type 2",
+  #                                 cluster_name == "Mitigation first" ~ "Type 3",
+  #                                 cluster_name == "Mega all in" ~ "Type 4")) %>% 
   select(city_id, cluster_name_old = cluster_name)
 
 
@@ -29,3 +29,5 @@ changes <- left_join(new, old, by = c("GHS_urban_area_id" = "city_id")) %>%
   theme_SM()
 
 ggsave("plots/changes.pdf", changes, height = 10, width = 10)
+ggsave("plots/changes.png", changes, height = 5, width = 5)
+

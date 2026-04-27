@@ -199,7 +199,7 @@ class ClusteringLayer(Layer):
         self._initial_weights = [weights]
 
 
-def target_distribution(q, temperature=.2):
+def target_distribution(q, temperature=.3):
     weight = q ** 2 / tf.reduce_sum(q, axis=0)
     weight = tf.transpose(tf.transpose(weight) / tf.reduce_sum(weight, axis=1))
 
@@ -262,9 +262,9 @@ def train_autoencoder(run_id, model_dir='clustering_models/models'):
     # Use fixed architecture, best-performing parameters inserted
     autoencoder = build_autoencoder_fixed(
         encoding_dim=4,    # best values
-        l2_reg=6.770866604848463e-05,      # best values
-        units1=96,         # best values
-        units2=32          # best values
+        l2_reg=5.086267866771555e-06,      # best values
+        units1=80,         # best values
+        units2=16          # best values
     )
 
     # Train with early stopping

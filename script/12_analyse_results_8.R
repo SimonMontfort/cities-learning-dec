@@ -126,26 +126,14 @@ co_vars <- c("GHS_population", "GHS_population_growth", "GHS_population_density"
              "GHS_old_pop", 'GHS_HDI', 'GHS_female_gender_index',
              "GHS_GDP_PPP", "GHS_GDP_PPP_growth", 
              "GHS_critical_infra", 
-             # "GHS_greenness_index", 
-             # "GHS_precipitation",
              "hdd",
              "cdd"
-             # "GHS_land_cons",
-             # , "GHS_hosp_pc"
-             # , "GHS_road_len"
-             # , "odiac_norm"
 )
 co_vars_formatted <- c("Population", "Population growth", "Population density", "Population density growth", 
                        "Old to young population shares", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
                        "Critical infrastructure", 
-                       # "Greenness", 
-                       # "Precipitation",
                        "Heating degree days", 
                        "Cooling degree days"
-                       # "Land consumption",
-                       # , "Hospitals p.c."
-                       # , "Road density"
-                       # , "Emissions p.c."
 )
 reg_vars <- c("NORTH-AMERICA", "SOUTH-AMERICA", "EUROPE", "AFRICA", "ASIA", "OCEANIA" , "SMALL ISLANDS")
 reg_vars_wg2 <- c("North America", "South America", "Europe", "Africa", "Asia", "Australasia", "Small Islands")
@@ -153,10 +141,10 @@ reg_vars_wg2 <- c("North America", "South America", "Europe", "Africa", "Asia", 
 cluster_names <- data.frame(
   consensus_label_majority = 0:3,
   cluster_name = c(
-    "Type 1",
-    "Type 2",
-    "Type 4", 
-    "Type 3"
+    "Type 3",
+    "Type 4",
+    "Type 2", 
+    "Type 1"
   )) %>% 
   mutate(cluster_name = factor(cluster_name, levels = c("Type 1",
                                                         "Type 2",
@@ -171,7 +159,6 @@ proj_robin <- "+proj=robin"
 ghsl <- st_transform(ghsl, proj_robin)
 world <- st_transform(world, proj_robin)
 bb <- st_transform(bb, proj_robin)
-# ipcc_cont <- st_transform(ipcc_cont, proj_robin)
 
 ################################################################################
 # functions needed throughout the script
@@ -225,10 +212,7 @@ rename_co_vars <- function(df, column) {
     "cdd" = "Cooling degree days",
     'GHS_HDI' = "HDI", 
     'GHS_female_gender_index' = "Gender index",
-    # "GHS_land_cons" = "Land consumption",
     "GHS_old_pop" =  "Old to young population shares",
-    # "GHS_road_len" = "Road density"
-    # , "GHS_hosp_pc" = "Hospitals p.c."
     "odiac_norm" = "CO2 emissions p.c."
   )
   
@@ -288,7 +272,6 @@ clust <- clust %>%
   left_join(n_studies_per_city, by = c("GHS_urban_area_id" = "city_id")) %>% 
   left_join(cluster_names, by = "consensus_label_majority") %>% 
   mutate(n_studies = ifelse(is.na(n_studies), 0, n_studies))
-
 
 sort(unique(clust$consensus_label_majority))
 
@@ -725,43 +708,6 @@ p_emissions_box <- ggplot(emmissions_box_dat, aes(x = cluster_name, y = odiac_no
 
 ggsave(p_emissions_box, file = "plots/p_emissions_box.pdf", width = 10, height = 5)
 
-
-
-# calc_avg_growth <- function(x) {
-#   # Remove leading NAs only
-#   if(all(is.na(x))) return(NA)  # Entire series is NA
-#   x <- x[seq(from = which(!is.na(x))[1], to = length(x))]
-#   
-#   # If less than 2 valid values after trimming, return NA
-#   if(sum(!is.na(x)) < 2) return(NA)
-#   
-#   # Compute growth using available consecutive values
-#   diffs <- diff(log(x), lag = 1)
-#   mean(diffs, na.rm = TRUE)
-# }
-# 
-# # Compute growth rates per group for ODIAC and EDGAR
-# growth_rates <- emmissions_dat %>%
-#   group_by(ID_UC_G0, GC_CNT_GAD_2025, GC_UCN_MAI_2025) %>%
-#   filter(Year >=2017) %>% 
-#   arrange(Year, .by_group = T) %>% 
-#   summarise(
-#     ODIAC_avg_growth = calc_avg_growth(ODIAC),
-#     EDGAR_avg_growth = calc_avg_growth(EDGAR),
-#     .groups = 'drop'
-#   ) %>%
-#   mutate(
-#     ODIAC_avg_growth_pct = (exp(ODIAC_avg_growth) - 1) * 100,
-#     EDGAR_avg_growth_pct = (exp(EDGAR_avg_growth) - 1) * 100
-#   )
-# 
-# growth_rates %>% 
-#   left_join(clust %>% select(consensus_label_majority, GHS_urban_area_id), by = c("ID_UC_G0" = "GHS_urban_area_id")) %>% 
-#   group_by(consensus_label_majority) %>% 
-#   arrange(ODIAC_avg_growth_pct, .by_group = TRUE) %>% 
-#   slice(1:10) %>% 
-#   as.data.frame()
-
 ghsl_clean %>% 
   left_join(ghsl %>% dplyr::select(ID_UC_G0, CL_B12_CUR_2010), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(clust %>% dplyr::select(GHS_urban_area_id, consensus_label_majority), by = "GHS_urban_area_id" ) %>% 
@@ -790,24 +736,18 @@ ghsl_clean %>%
 box_plot_add_covs_dat <- ghsl_clean %>% 
   left_join(ghsl %>% dplyr::select(ID_UC_G0, CL_B12_CUR_2010), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(clust %>% dplyr::select(GHS_urban_area_id, consensus_label_majority), by = "GHS_urban_area_id" ) %>% 
-  # left_join(gender, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  # left_join(hdi, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(emmissions_box_dat %>% dplyr::select(ID_UC_G0, odiac_norm), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>%
   dplyr::select(GHS_urban_area_id, consensus_label_majority, co_vars, 
-                # GHS_female_gender_index, 
                 GHS_HDI, odiac_norm) %>% 
   pivot_longer(-c(GHS_urban_area_id, consensus_label_majority), names_to = "variable") %>% 
   mutate(clustering = ifelse(variable %in% co_vars, "Clustering", "Outcomes")) %>% 
   rename_co_vars("variable") %>% 
-  mutate(# variable = ifelse(variable == "GHS_female_gender_index", "Female gender index", variable),
-    #        variable = ifelse(variable == "GHS_HDI", "Human Development index", variable),
+  mutate(
     variable = ifelse(variable == "odiac_norm", "CO2 emissions p.c.", variable),
     variable = factor(variable, levels = c(co_vars_formatted, "CO2 emissions p.c."))) %>%
   left_join(cluster_names, by = c("consensus_label_majority" = "consensus_label_majority")) %>% 
   group_by(variable) %>%
   mutate(
-    # adjusted_value = ifelse(value == 0, 1e-4 *  mean(abs(value), na.rm = TRUE), value),
-    # normalized_value = sign(adjusted_value) * log2(abs(adjusted_value) / mean(abs(value), na.rm = TRUE))
     scaled_value = scale(value),
     normalized_value = value / mean(value, na.rm = TRUE)) %>%
   ungroup() 
@@ -951,12 +891,43 @@ for (cluster in cluster_names$cluster_name) {
 # order
 box_plot_list <- box_plot_list[levels(cluster_names$cluster_name)]
 fig1_old <- plot_grid(plotlist = box_plot_list, ncol = 2, labels = "auto", align = "v")
-ggsave(fig1_old, filename = "plots/fig1_old.pdf", width = 10, height = 10)
+ggsave(fig1_old, filename = "plots/fig1_old_logs.pdf", width = 10, height = 10)
 
 # ggsave(box_plot_list[[1]], filename = "plots/type_1.pdf", width = 5, height = 3.8)
 # ggsave(box_plot_list[[2]], filename = "plots/type_2.pdf", width = 5, height = 3.8)
 # ggsave(box_plot_list[[3]], filename = "plots/type_3.pdf", width = 5, height = 3.8)
 # ggsave(box_plot_list[[4]], filename = "plots/type_4.pdf", width = 5, height = 3.8)
+
+box_plot_add_covs_dat %>% group_by(cluster_name, variable) %>% summarise(med = median(value, na.rm =T)) %>% arrange(variable) %>% print(n=Inf)
+
+
+library(ggplot2)
+
+box_plot_add_covs_dat %>%
+  left_join(ghsl %>% select(ID_UC_G0, GC_DEV_WIG_2025), 
+            by = c("GHS_urban_area_id" = "ID_UC_G0")) %>%
+  count(cluster_name, GC_DEV_WIG_2025) %>%
+  group_by(cluster_name) %>%
+  mutate(pct = 100 * n / sum(n)) %>%
+  filter(!is.na(GC_DEV_WIG_2025)) %>%
+  mutate(
+    GC_DEV_WIG_2025 = factor(GC_DEV_WIG_2025, 
+                             levels = c("Low income", "Lower Middle", 
+                                        "Upper Middle", "High income"))
+  ) %>%
+  ggplot(aes(x = GC_DEV_WIG_2025, y = cluster_name, fill = pct)) +
+  geom_tile(colour = "white", linewidth = 0.8) +
+  geom_text(aes(label = paste0(round(pct, 1), "%")), 
+            size = 3.5, colour = "black") +
+  scale_fill_distiller(direction = 1,
+                       name = "Share of\ncluster (%)") +
+  labs(
+    x = "World Bank income group",
+    y = NULL,
+    title = "Urban typology vs World Bank income classification"
+  ) +
+  theme_SM()
+
 
 selected_cs <- readxl::read_xlsx("/Users/simon/Downloads/case studies.xlsx")
 
@@ -970,7 +941,7 @@ not_matching <- selected_cs %>%
                         by = c("GHS_urban_area_id" = "ID_UC_G0")),
             by = c("City Name" = "GC_UCN_MAI_2025", "Country" = "GC_CNT_GAD_2025")) %>% 
   filter(cluster_name != Type) %>% 
-  select(`City Name`, Country, type_initial = Type, type_revised = cluster_name)
+  select(`City Name`, Country, type_initial = Type, type_revised = cluster_name, mean_prob)
 
 not_matching
 (nrow(not_matching)-2)/nrow(selected_cs)
@@ -1070,6 +1041,7 @@ p_assign_probs <- desc_geo %>%
 p_assign_probs
 
 p_share_mixed <- desc_geo_exlc %>%
+  filter(!is.na(cluster_name)) %>% 
   group_by(cluster_name, main_mixed) %>% 
   summarise(n = n()) %>% 
   group_by(cluster_name) %>% 
@@ -2475,159 +2447,6 @@ ggsave("plots/p_pop_and_city_share_cont.pdf", p_pop_and_city_share_cont, height 
 
 
 ################################################################################
-# evidence growth by group
-################################################################################
-
-clust_with_topics <- clust %>%
-  left_join(clean_places, by = c("GHS_urban_area_id" = "city_id")) %>%
-  left_join(oa %>% select(id, abstract, publication_year), by = "id") %>%
-  as_tibble()
-
-# Assign IPCC phases
-data_phase <- clust_with_topics %>%
-  mutate(
-    publication_year = as.numeric(publication_year),
-    phase = case_when(
-      publication_year < 1990 ~ "AR1",
-      publication_year > 1990 & publication_year <= 1995 ~ "AR2",
-      publication_year > 1995 & publication_year <= 2001 ~ "AR3",
-      publication_year > 2001 & publication_year <= 2007 ~ "AR4",
-      publication_year > 2007 & publication_year <= 2014 ~ "AR5",
-      publication_year > 2014 & publication_year <= 2022 ~ "AR6"
-    )
-  ) 
-
-# Aggregate: n_studies per phase per cluster and Region
-growth_by_phase <- data_phase %>%
-  filter(!is.na(phase)) %>%
-  group_by(phase, cluster_name, Region) %>%
-  summarise(n_studies = n(), .groups = "drop") %>%
-  mutate(phase = factor(phase, levels = c("AR1", "AR2", "AR3", "AR4", "AR5", "AR6"))) %>%
-  arrange(cluster_name, Region, phase) %>%
-  group_by(cluster_name, Region) %>%
-  mutate(
-    baseline = first(n_studies),  # for normalized growth
-    norm_growth = n_studies / baseline
-  ) 
-
-growth_by_phase_anno <- growth_by_phase %>% 
-  group_by(cluster_name, phase) %>% 
-  summarise(n_studies = sum(n_studies)) %>% 
-  mutate(n_studies_lag = lag(n_studies),
-         pct_growth = round(100 * (n_studies - n_studies_lag) / n_studies_lag, 1))
-
-
-# Add midpoint year of each phase for plotting
-phase_years <- tibble(
-  phase = c("AR1", "AR2", "AR3", "AR4", "AR5", "AR6"),
-  year = c(1990, 1993, 1998, 2004, 2011, 2018)
-)
-
-growth_by_phase_anno <- left_join(growth_by_phase_anno, phase_years, by = "phase")
-growth_by_phase <- left_join(growth_by_phase, phase_years, by = "phase")
-
-# Create annotation labels only for phases with lag
-annotations <- growth_by_phase_anno %>%
-  filter(!is.na(pct_growth)) %>%
-  mutate(
-    label = paste0(pct_growth, "%"),
-    y = 130  
-  )
-
-# Final plot: normalized growth + annotations with phase-to-phase growth
-p_g_rel <- ggplot(growth_by_phase, aes(x = year, y = norm_growth, color = Region, group = Region)) +
-  geom_line(size = 1) +
-  geom_point(size = 1.2) +
-  facet_wrap(~cluster_name) +
-  geom_text(
-    data = annotations,
-    aes(x = year, y = y, label = label),
-    inherit.aes = FALSE,
-    vjust = -0.5, size = 2.5
-  ) +
-  geom_vline(
-    xintercept = c(1990.5, 1995.5, 2001.5, 2007.5, 2014.5, 2022.5),
-    color = "grey60", linetype = "dashed", size = 0.3
-  ) +
-  ylim(c(0, 150)) + xlim(c(1990,2025)) +
-  scale_color_npg() +
-  labs(
-    x = "Publication year",
-    y = "Relative growth (normalized to AR1)"
-  ) +
-  theme_SM() +
-  theme(
-    axis.text.x = element_text(angle = 0, hjust = 0),
-    legend.position = c(.35, .75)
-  ) +
-  guides(color = guide_legend(nrow = 3, byrow = TRUE))
-
-# Print
-p_g_rel
-
-# Step 1: Assign IPCC phase labels
-data_phase <- clust_with_topics %>%
-  mutate(
-    publication_year = as.numeric(publication_year),
-    phase = case_when(
-      publication_year < 1990 ~ "AR1",
-      publication_year > 1990 & publication_year <= 1995 ~ "AR2",
-      publication_year > 1995 & publication_year <= 2001 ~ "AR3",
-      publication_year > 2001 & publication_year <= 2007 ~ "AR4",
-      publication_year > 2007 & publication_year <= 2014 ~ "AR5",
-      publication_year > 2014 & publication_year <= 2022 ~ "AR6",
-      publication_year > 2022 ~ "AR7"
-    )
-  ) 
-
-# Step 2: Compute annotation totals per cluster and phase
-annotations <- data_phase %>%
-  filter(!is.na(phase)) %>%
-  group_by(phase, cluster_name) %>%
-  summarise(total = n(), .groups = "drop") %>%
-  mutate(
-    x = case_when(
-      phase == "AR1" ~ 1990,
-      phase == "AR2" ~ 1993,
-      phase == "AR3" ~ 1998,
-      phase == "AR4" ~ 2004,
-      phase == "AR5" ~ 2011,
-      phase == "AR6" ~ 2018,
-      phase == "AR7" ~ 2025
-    ),
-    y = 14000  
-  )
-
-# Step 3: Main plot with bars, vlines, and annotations
-p_g_abs <- data_phase %>%
-  filter(publication_year >= 1990) %>%
-  group_by(publication_year, cluster_name, Region) %>%
-  summarise(n_studies = n(), .groups = "drop") %>%
-  ggplot(aes(x = publication_year, y = n_studies, fill = Region)) +
-  geom_bar(stat = "identity", position = "stack", width = .8) +
-  facet_wrap(~cluster_name) +
-  # Add vertical IPCC lines (optional)
-  geom_vline(xintercept = c(1990.5, 1995.5, 2001.5, 2007.5, 2014.5, 2022.5), color = "grey60", linetype = "dashed", size = 0.3) +
-  # Add annotation counts
-  geom_text(
-    data = annotations,
-    aes(x = x, y = y, label = total),
-    inherit.aes = FALSE,
-    vjust = -0.5, size = 2.5
-  ) +
-  ylim(c(0, 15000)) +
-  scale_fill_npg() +
-  labs(x = "Publication year", y = "Studies") +
-  theme_SM() +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0),
-        legend.position = c(.35,.7)) +
-  guides(fill=guide_legend(nrow=3,byrow=TRUE))
-
-figA7 <- ggarrange(p_g_abs, p_g_rel, ncol = 1, labels = c("a", "b"), align = "v")
-ggsave(figA7, file = "plots/figA7.pdf", height = 9, width = 10) 
-
-
-################################################################################
 # Cities per cluster with and without research
 ################################################################################
 
@@ -3187,3 +3006,4 @@ fig3fgh <- ggarrange(
 fig3 <- ggarrange(fig3abcde, fig3fgh, labels = c("", ""), ncol = 2, widths = c(3.2, 1))
 
 ggsave(fig3, file = "plots/fig3.pdf", height = 8, width = 10)
+
