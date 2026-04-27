@@ -46,9 +46,6 @@ clust <- read.csv("data/clustering_results/dec_clusters_k4.csv")
 ghsl <- read_sf("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg")
 ghsl_clean <- read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included+.parquet")
 
-labelled_topics <- readxl::read_xlsx("data/topic_model/labelled_topics_2.xlsx")
-main_topic <- read.csv("data/topic_model/main_topic_220.csv")
-
 world <- ne_countries(scale = "medium", returnclass = "sf")
 bb <- ne_download(type = "wgs84_bounding_box", category = "physical", returnclass = "sf") 
 
