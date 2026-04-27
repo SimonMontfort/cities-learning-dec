@@ -6,7 +6,7 @@ library(blackmarbler)
 library(sf)
 library(dplyr)
 
-setwd("/Users/simon/Documents/repo/cities-learning-dec")
+setwd("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
 # ── 1. Authentication ──────────────────────────────────────────
 # Get bearer token — only need to do this once, it's stored for reuse

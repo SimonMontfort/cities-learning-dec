@@ -195,7 +195,7 @@ def summarize_clustering_results(results, ghs_ids, n_clusters, dir=None):
 
 
 if __name__ == "__main__":
-    os.chdir("/Users/simon/Documents/repo/cities-learning-dec")
+    os.chdir("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
     n_runs = 50
     cities_clean_scaled_df = pd.read_parquet("data/clustering_data_clean/GHS_UCDB_2024_preproc_2025_04_09_uci_and_nan_imputation_add_vars_included_scaled.parquet")

@@ -12,7 +12,7 @@ from rasterio.plot import show
 from rasterstats import zonal_stats
 import contextily as ctx
 
-os.chdir("/Users/simon/Documents/repo/cities-learning-dec")
+os.chdir("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
 MODIS_PATH = "/Users/simon/Library/CloudStorage/GoogleDrive-<<<< email >>>>/My Drive/repo/cities-learning-dec-data//lc_mcd12q1v061.t5_c_500m_s_20210101_20211231_go_epsg.4326_v20230818.tif"
 

@@ -115,7 +115,7 @@ def incremental_stability(all_labels, cluster_range, n_permutations=50, random_s
 
 
 if __name__ == "__main__":
-    os.chdir("/Users/simon/Documents/repo/cities-learning-DEC")
+    os.chdir("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
     cluster_range = range(4,5)
     n_runs = 50

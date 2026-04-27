@@ -21,7 +21,7 @@ from shapely.geometry import shape
 from tqdm import tqdm
 
 # ── Configure ─────────────────────────────────────────────────
-BASE_DIR   = Path("/Users/simon/Documents/repo/cities-learning-dec")
+BASE_DIR   = Path("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 UCDB_PATH  = BASE_DIR / "data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg"
 WSF_DIR    = Path("/Users/simon/Library/CloudStorage/GoogleDrive-<<< email >>>/My Drive/repo/cities-learning-dec-data/wfs-2019")
 OUT_PATH   = BASE_DIR / "data/wsf-2019/wsf_stats.csv"

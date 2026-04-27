@@ -1,4 +1,4 @@
-old <-readxl::read_xlsx("/Users/simon/Documents/repo/cities-learning-dec/data/case_selection/data_base_clean.xlsx", sheet = 2)
+old <-readxl::read_xlsx("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal/data/case_selection/data_base_clean.xlsx", sheet = 2)
 
 new <- clust %>% 
   left_join(cluster_names) %>% 

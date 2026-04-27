@@ -21,7 +21,7 @@ import pathlib
 from tensorflow.keras import backend as K
 import gc
 
-os.chdir("/Users/simon/Documents/repo/cities-learning-dec")
+os.chdir("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
 print("Current working directory:", os.getcwd())
 

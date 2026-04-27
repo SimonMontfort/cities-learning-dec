@@ -15,7 +15,7 @@ R.version
 # nickname       Eye Holes  
 rm(list = ls())
 
-setwd("/Users/simon/Documents/repo/cities-learning-dec")
+setwd("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
 library(dplyr)
 library(tidyr)

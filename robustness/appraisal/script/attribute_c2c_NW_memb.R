@@ -21,7 +21,7 @@ key_dict %>%
 unique(key_dict$entity_type)
 
 
-ghsl <- st_read("/Users/simon/Documents/repo/cities-learning-dec/data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg") %>% as_tibble()
+ghsl <- st_read("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal/data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg") %>% as_tibble()
 
 ghsl <- ghsl %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025, geom)
 # ============================================================

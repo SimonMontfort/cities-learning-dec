@@ -14,7 +14,7 @@ R.version
 # version.string R version 4.3.2 (2023-10-31)
 # nickname       Eye Holes
 
-setwd("/Users/simon/Documents/repo/cities-learning-dec")
+setwd("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
 library(arrow)       # For reading/writing parquet files
 library(dplyr)       # For data manipulation
@@ -126,7 +126,6 @@ cities_clean_sub <- cities_clean %>%
   left_join(modis, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(rev %>% select(id, decision), by = c("GHS_urban_area_id" = "id")) %>% 
   filter(
-    # share_urban != 0 &
      !decision %in% c("drop", "ambiguous")
          ) %>% 
   filter(!GHS_urban_area_id %in% c(3365, 4120, 1983)) %>% # unrealistic pop density

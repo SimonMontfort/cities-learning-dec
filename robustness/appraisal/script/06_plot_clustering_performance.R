@@ -28,7 +28,7 @@ library(stringr)
 library(ggsci)
 library(scales)
 
-setwd("/Users/simon/Documents/repo/cities-learning-dec")
+setwd("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
 theme_set(
   theme_light() +   

@@ -26,7 +26,7 @@ library(tmap)
 library(units)
 library(rmapshaper)
 
-setwd("/Users/simon/Documents/repo/cities-learning-dec")
+setwd("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
 
 ##########################

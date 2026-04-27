@@ -10,7 +10,7 @@ from matplotlib.patches import Polygon as MplPolygon
 import rasterio
 from rasterio.windows import from_bounds
 
-os.chdir("/Users/simon/Documents/repo/cities-learning-dec")
+os.chdir("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 
 print("Loading UCDB data...")
 ucdb = gpd.read_file("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg")
