@@ -426,4 +426,7 @@ def build_review_csv():
 
 
 if __name__ == "__main__":
-    build_review_csv()
+    if OUT_PATH.exists():
+        log.info(f"✓ {OUT_PATH} already exists — skipping. Delete it to rebuild.")
+    else:
+        build_review_csv()

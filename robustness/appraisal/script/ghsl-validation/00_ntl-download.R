@@ -11,8 +11,8 @@ setwd("/Users/simon/Documents/repo/cities-learning-dec/robustness/appraisal")
 # ── 1. Authentication ──────────────────────────────────────────
 # Get bearer token — only need to do this once, it's stored for reuse
 # Requires a free NASA Earthdata account: https://urs.earthdata.nasa.gov
-bearer <- get_nasa_token(username = "simon.montfort",
-                         password = "sunsyv-qocBi9-gocsiz")
+bearer <- get_nasa_token(username = "",
+                         password = "")
 
 # ── 2. Load UCDB polygons ──────────────────────────────────────
 ucdb <- st_read("data/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A_small.gpkg") %>%
@@ -32,7 +32,7 @@ ntl_df <- bm_extract(
   product_id  = "VNP46A4",
   date        = 2020,
   bearer      = bearer,
-  file_dir   = "/Users/simon/Library/CloudStorage/GoogleDrive-<<<< email >>>>/My Drive/repo/cities-learning-dec-data/night-time-lights", 
+  file_dir   = "path_to_Gdrive/repo/cities-learning-dec-data/night-time-lights", 
   file_skip_if_exists = TRUE,
   check_all_tiles_exist = FALSE
   # Default variable is NearNadir_Composite_Snow_Free — correct for our use

@@ -11,11 +11,10 @@ import geopandas as gpd
 from pathlib import Path
 import sys
 csv.field_size_limit(sys.maxsize)
-from config import BASE_DIR, DATA_DIR
+from config import BASE_DIR, DATA_DIR, UCDB_PATH
 
 CSV_PATH  = BASE_DIR / "data/ghsl_appraisal/cities_review.csv"
-UCDB_PATH = DATA_DIR / "GHSL-UCDB/GHS_UCDB_GLOBE_R2024A.gpkg"
-LAYER     = "UC_centroids"
+LAYER     = "GHS_UCDB_GLOBE_R2024A_small"
 
 CSV_ID_COL  = "id"        # column in cities_review.csv
 UCDB_ID_COL = "ID_UC_G0"  # column in UC_centroids layer — confirm below if error
