@@ -94,27 +94,6 @@ cities_ipcc_regions <- read.csv("data/IPCC-WGII-continental-regions_shapefile/ci
 
 emmissions <- read.csv("data/emissions/balance_sheet.csv")
 
-load_data <- function(file_name, value_col, new_name) {
-  read.csv(file.path("data/GHS_UCDB_GLOBE_R2024A_V1_0", file_name)) %>%
-    select(ID_UC_G0, all_of(value_col)) %>%
-    mutate(across(all_of(value_col), as.numeric)) %>% 
-    rename(!!new_name := value_col)
-}
-
-# === Load datasets with custom names ===
-gender <- load_data("socioeconomic.csv",  "SC_SEC_GDF_2020", "GHS_female_gender_index")
-hdi    <- load_data("socioeconomic.csv",  "SC_SEC_HDI_2020", "GHS_HDI")
-lecz   <- load_data("exposure.csv",       "EX_L10_B23_2020", "GHS_builtup_below_10m")
-# hazards   <- load_data("exposure.csv",       "HZ_CEV_DRO_2015", "GHS_builtup_below_10m")
-
-# haz <- readxl:: read_xlsx("/Users/simon/Downloads/GHS_UCDB_GLOBE_R2024A_V1_0/GHS_UCDB_GLOBE_R2024A.xlsx", sheet = "HAZARD_RISK")
-# table(haz$HZ_CEV_DRO_2015)
-# 
-# t <- haz %>% 
-#   left_join(ghsl, by = c("ID_UC_G0"))
-# 
-# cor(as.numeric(t$HZ_CEV_DRO_2015), t$hdd, use = "complete")
-# cor(as.numeric(t$HZ_CEV_DRO_2015), t$CL_B12_CUR_2010, use = "complete")
 
 ################################################################################
 # covariate lists and labels
@@ -223,10 +202,7 @@ rename_co_vars <- function(df, column) {
     "cdd" = "Cooling degree days",
     'GHS_HDI' = "HDI", 
     'GHS_female_gender_index' = "Gender index",
-    # "GHS_land_cons" = "Land consumption",
     "GHS_old_pop" =  "65+ population share",
-    # "GHS_road_len" = "Road density"
-    # , "GHS_hosp_pc" = "Hospitals p.c."
     "odiac_norm" = "CO2 emissions p.c."
   )
   
@@ -725,58 +701,14 @@ ggsave(p_emissions_box, file = "plots/p_emissions_box.pdf", width = 10, height =
 
 
 
-# calc_avg_growth <- function(x) {
-#   # Remove leading NAs only
-#   if(all(is.na(x))) return(NA)  # Entire series is NA
-#   x <- x[seq(from = which(!is.na(x))[1], to = length(x))]
-#   
-#   # If less than 2 valid values after trimming, return NA
-#   if(sum(!is.na(x)) < 2) return(NA)
-#   
-#   # Compute growth using available consecutive values
-#   diffs <- diff(log(x), lag = 1)
-#   mean(diffs, na.rm = TRUE)
-# }
-# 
-# # Compute growth rates per group for ODIAC and EDGAR
-# growth_rates <- emmissions_dat %>%
-#   group_by(ID_UC_G0, GC_CNT_GAD_2025, GC_UCN_MAI_2025) %>%
-#   filter(Year >=2017) %>% 
-#   arrange(Year, .by_group = T) %>% 
-#   summarise(
-#     ODIAC_avg_growth = calc_avg_growth(ODIAC),
-#     EDGAR_avg_growth = calc_avg_growth(EDGAR),
-#     .groups = 'drop'
-#   ) %>%
-#   mutate(
-#     ODIAC_avg_growth_pct = (exp(ODIAC_avg_growth) - 1) * 100,
-#     EDGAR_avg_growth_pct = (exp(EDGAR_avg_growth) - 1) * 100
-#   )
-# 
-# growth_rates %>% 
-#   left_join(clust %>% select(consensus_label_majority, GHS_urban_area_id), by = c("ID_UC_G0" = "GHS_urban_area_id")) %>% 
-#   group_by(consensus_label_majority) %>% 
-#   arrange(ODIAC_avg_growth_pct, .by_group = TRUE) %>% 
-#   slice(1:10) %>% 
-#   as.data.frame()
-
+# check
 ghsl_clean %>% 
   left_join(ghsl %>% dplyr::select(ID_UC_G0, CL_B12_CUR_2010), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(clust %>% dplyr::select(GHS_urban_area_id, consensus_label_majority), by = "GHS_urban_area_id" ) %>% 
-  # left_join(gender, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  # left_join(hdi, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  # left_join(emmissions_box_dat %>% dplyr::select(ID_UC_G0, odiac_norm), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  dplyr::select(GHS_urban_area_id, consensus_label_majority, co_vars, 
-                # GHS_female_gender_index, GHS_HDI, odiac_norm
-  ) %>% 
+  dplyr::select(GHS_urban_area_id, consensus_label_majority, co_vars) %>% 
   pivot_longer(-c(GHS_urban_area_id, consensus_label_majority), names_to = "variable") %>% 
   mutate(clustering = ifelse(variable %in% co_vars, "Clustering", "Outcomes")) %>% 
   rename_co_vars("variable") %>% 
-  # mutate(# variable = ifelse(variable == "GHS_female_gender_index", "Female gender index", variable),
-  #        # variable = ifelse(variable == "GHS_HDI", "Human Development index", variable),
-  #        # variable = ifelse(variable == "odiac_norm", "CO2 emissions p.c.", variable),
-  #        variable = factor(variable, levels = c(co_vars_formatted, "Female gender index", 
-  #                                               "Human Development index", "CO2 emissions p.c."))) %>% 
   left_join(cluster_names, by = c("consensus_label_majority" = "consensus_label_majority")) %>% 
   group_by(variable) %>% 
   summarise()
@@ -788,24 +720,17 @@ ghsl_clean %>%
 box_plot_add_covs_dat <- ghsl_clean %>% 
   left_join(ghsl %>% dplyr::select(ID_UC_G0, CL_B12_CUR_2010), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(clust %>% dplyr::select(GHS_urban_area_id, consensus_label_majority), by = "GHS_urban_area_id" ) %>% 
-  # left_join(gender, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-  # left_join(hdi, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
   left_join(emmissions_box_dat %>% dplyr::select(ID_UC_G0, odiac_norm), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>%
-  dplyr::select(GHS_urban_area_id, consensus_label_majority, co_vars, 
-                # GHS_female_gender_index, 
-                GHS_HDI, odiac_norm) %>% 
+  dplyr::select(GHS_urban_area_id, consensus_label_majority, co_vars, GHS_HDI, odiac_norm) %>% 
   pivot_longer(-c(GHS_urban_area_id, consensus_label_majority), names_to = "variable") %>% 
   mutate(clustering = ifelse(variable %in% co_vars, "Clustering", "Outcomes")) %>% 
   rename_co_vars("variable") %>% 
-  mutate(# variable = ifelse(variable == "GHS_female_gender_index", "Female gender index", variable),
-    #        variable = ifelse(variable == "GHS_HDI", "Human Development index", variable),
+  mutate(
     variable = ifelse(variable == "odiac_norm", "CO2 emissions p.c.", variable),
     variable = factor(variable, levels = c(co_vars_formatted, "CO2 emissions p.c."))) %>%
   left_join(cluster_names, by = c("consensus_label_majority" = "consensus_label_majority")) %>% 
   group_by(variable) %>%
   mutate(
-    # adjusted_value = ifelse(value == 0, 1e-4 *  mean(abs(value), na.rm = TRUE), value),
-    # normalized_value = sign(adjusted_value) * log2(abs(adjusted_value) / mean(abs(value), na.rm = TRUE))
     scaled_value = scale(value),
     normalized_value = value / mean(value, na.rm = TRUE)) %>%
   ungroup() 
@@ -1618,7 +1543,6 @@ make_map <- function(df, type) {
       "Type 3" = "#4DAF4A",
       "Type 4" = "#984EA3"),
       na.value = "grey30") +
-    # scale_alpha(range = c(.05,1)) +
     scale_size(range = c(.05,7), 
                limits = c(global_min_pop, global_max_pop),
     ) +
