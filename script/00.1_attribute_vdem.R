@@ -161,8 +161,4 @@ p_vdem <- ggplot(ucdb_case,
     )
   ) +
   theme_SM()
-
-ggsave("plots/vdem_by_type.pdf", p_vdem,
-       width = 10, height = 5)
-
-cat("Saved: plots/vdem_by_type.pdf\n")
+  

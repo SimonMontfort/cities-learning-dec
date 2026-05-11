@@ -50,20 +50,14 @@ world <- ne_countries(scale = "medium", returnclass = "sf")
 bb <- ne_download(type = "wgs84_bounding_box", category = "physical", returnclass = "sf") 
 
 # oa data
-file_names <- list.files(
-  path = "/Users/simon/Documents/repo/cities-learning/data/OpenAlex/05_deduplicated",
-  pattern = "^city_works_df_NA_abstr_added_dedup_\\d+\\.csv$",
-  full.names = TRUE
-)
-df_list <- lapply(file_names, read.csv)
-oa <- do.call(rbind, df_list)
+oa <- readxl::read_xlsx("data/case_selection/case_selection_and_literature.xlsx", sheet = 2)
 
 # studies per city
 clean_places <- read.csv("data/geoparser/clean_places_augmented.csv")
 
 clean_places <- clean_places %>% 
   filter((city_word_match_yes | city_intersects_yes) %in% TRUE) %>%
-  filter(id %in% oa$id) %>% # only deduplicated count
+  filter(id %in% oa$OpenAlex_article_id) %>% # only deduplicated count
   mutate(city_id = ifelse(is.na(city_intersection_id), city_word_match_id, city_intersection_id)) %>% 
   select(id, city_id) %>% 
   distinct() 
@@ -113,7 +107,7 @@ co_vars <- c("GHS_population", "GHS_population_growth", "GHS_population_density"
              # , "odiac_norm"
 )
 co_vars_formatted <- c("Population", "Population growth", "Population density", "Population density growth", 
-                       "65+ population share", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
+                       "Young/old population", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
                        "Critical infrastructure", 
                        # "Greenness", 
                        # "Precipitation",
@@ -202,7 +196,7 @@ rename_co_vars <- function(df, column) {
     "cdd" = "Cooling degree days",
     'GHS_HDI' = "HDI", 
     'GHS_female_gender_index' = "Gender index",
-    "GHS_old_pop" =  "65+ population share",
+    "GHS_old_pop" =  "Young/old population",
     "odiac_norm" = "CO2 emissions p.c."
   )
   
@@ -410,7 +404,7 @@ floating = FALSE)
 #   )
 # 
 # # 5. Plot top 3
-# fig2x <- df %>% 
+# fig3x <- df %>% 
 #   rename_co_vars("name") %>%
 #   mutate(name_combined = paste(Region, cluster_name, name, sep = "___")) %>% 
 #   filter(!is.na(diff)) %>% 
@@ -457,173 +451,8 @@ floating = FALSE)
 #   ) +
 #   theme(legend.position = "bottom")
 # 
-# fig2x
-# ggsave(fig2x, file = "plots/fig2x.pdf", height = 8, width = 10)
-
-
-
-
-# 
-# winsorize <- function(x, p = c(0.01, 0.99)) {
-#   q <- quantile(x, p, na.rm = TRUE)
-#   x[x < q[1]] <- q[1]
-#   x[x > q[2]] <- q[2]
-#   x
-# }
-# 
-# min_max_scale <- function(x) {
-#   (x - min(x, na.rm = TRUE)) / 
-#     (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
-# }
-# 
-# # GLOBAL winsorized + minmax-scaled dataset
-# clust_scaled <- clust %>%
-#   mutate(across(all_of(co_vars),
-#                 ~ min_max_scale(winsorize(.x)),
-#                 .names = "{.col}"))
-# 
-# reg_medians_scaled <- clust_scaled %>%
-#   left_join(cluster_names, by = "consensus_label_majority") %>%
-#   group_by(Region) %>%
-#   summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
-#   pivot_longer(all_of(co_vars),
-#                names_to = "indicator",
-#                values_to = "reg_scaled")
-# 
-# reg_type_medians_scaled <- clust_scaled %>%
-#   left_join(cluster_names, by = "consensus_label_majority") %>%
-#   group_by(Region, cluster_name) %>%
-#   summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
-#   pivot_longer(all_of(co_vars),
-#                names_to = "indicator",
-#                values_to = "type_scaled")
-# 
-# ranking <- reg_type_medians_scaled %>%
-#   left_join(reg_medians_scaled, by = c("Region", "indicator")) %>%
-#   mutate(
-#     diff_scaled = type_scaled - reg_scaled,
-#     abs_diff_scaled = abs(diff_scaled)
-#   ) %>%
-#   group_by(Region, cluster_name) %>%
-#   slice_max(abs_diff_scaled, n = 3, with_ties = FALSE)
-# 
-# # raw region medians
-# reg_medians_raw <- clust %>%
-#   left_join(cluster_names, by = "consensus_label_majority") %>%
-#   group_by(Region) %>%
-#   summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
-#   pivot_longer(all_of(co_vars),
-#                names_to = "indicator",
-#                values_to = "reg_raw")
-# 
-# # raw type medians
-# reg_type_medians_raw <- clust %>%
-#   left_join(cluster_names, by = "consensus_label_majority") %>%
-#   group_by(Region, cluster_name) %>%
-#   summarise(across(all_of(co_vars), median, na.rm = TRUE)) %>%
-#   pivot_longer(all_of(co_vars),
-#                names_to = "indicator",
-#                values_to = "type_raw")
-# 
-# interp <- ranking %>%
-#   left_join(reg_medians_raw,  by = c("Region", "indicator")) %>%
-#   left_join(reg_type_medians_raw, by = c("Region", "cluster_name", "indicator")) %>%
-#   mutate(
-#     raw_ratio = type_raw / reg_raw,
-#     raw_diff = type_raw - reg_raw,
-#     interpretable_label = case_when(
-#       raw_ratio >= 1 ~ paste0(round(raw_ratio, 1), "× higher"),
-#       raw_ratio <  1 ~ paste0(round(1/raw_ratio, 1), "× lower")
-#     )
-#   ) %>% 
-#   rename_co_vars("indicator") 
-# 
-# ggplot(interp, aes(x = reg_raw, xend = type_raw, y = indicator)) +
-#   geom_segment(color = "grey60") +
-#   geom_point(aes(x = reg_raw), color = "black", size = 2) +
-#   geom_point(aes(x = type_raw, color = cluster_name), size = 2) +
-#   facet_grid2(rows = vars(Region),
-#               cols = vars(cluster_name),
-#               scales = "free_y",
-#               independent = "y") +
-#   labs(
-#     x = "Raw Value (Median)",
-#     y = "Indicator",
-#     title = "Interpretable Differences: Raw Medians",
-#     subtitle = "Indicators selected based on scaled differences"
-#   ) +
-#   theme_SM()
-# 
-# ggplot(interp, aes(x = raw_ratio, y = indicator, fill = cluster_name)) +
-#   geom_col() +
-#   geom_vline(xintercept = 1, lty = 2) +
-#   facet_grid2(rows = vars(Region), cols = vars(cluster_name),
-#               scales = "free_y",
-#               independent = "y") +
-#   geom_text(aes(hjust = ifelse(raw_ratio > 1, 1, 0),
-#                 x = ifelse(raw_ratio > 1, .95, 1.05),
-#                 label = sapply(indicator, function(x) sub(" ", "\n", sub(".*___", "", x)))),
-#             lineheight= .8, size = 2.7) +
-#   scale_x_continuous(transform = "log2") +
-#   labs(
-#     x = "Type Median / Regional Median",
-#     y = "Indicator",
-#     title = "Multiplicative Differences (Interpretation-Friendly)"
-#   ) +
-#   theme_SM() +
-#   theme(
-#     # axis.text.y = element_markdown(
-#     #   family = "Apple Color Emoji",   # macOS emoji font
-#     #   size = 12
-#     # )
-#     axis.ticks = element_blank(),
-#     axis.text.y = element_blank()
-#   ) 
-# 
-# 
-# 
-# ################################################################################
-# # summary statistics: correlations
-# ################################################################################
-# 
-# # Compute correlation matrix for numeric columns only
-# cor_mat <- cor(desc_dat %>% 
-#                  # left_join(coastal_cities, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-#                  # left_join(infra, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-#                  left_join(gender, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-#                  left_join(hdi, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-#                  # left_join(green, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-#                  left_join(lecz, by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-#                  left_join(emmissions_box_dat %>% select(odiac_norm, ID_UC_G0), by = c("GHS_urban_area_id" = "ID_UC_G0")) %>% 
-#                  dplyr::select(co_vars, EX_LEC_SHP_2025, IN_CIS_ALL_2020, SC_SEC_GDF_2020, SC_SEC_HDI_2020, GR_AVG_GRN_2025, odiac_norm), use = "complete.obs")
-# 
-# diag(cor_mat) <- NA
-# cor_mat[lower.tri(cor_mat, diag = TRUE)] <- NA
-# 
-# # Convert to long format
-# cor_df <- as.data.frame(cor_mat) %>%
-#   rownames_to_column(var = "Var1") %>%
-#   pivot_longer(cols = -Var1, names_to = "Var2", values_to = "Correlation") %>% 
-#   filter(!is.na(Correlation)) %>% 
-#   mutate(Var1 = factor(Var1, levels = c(co_vars, "dist_to_coast_km", "EX_LEC_SHP_2025", "IN_CIS_ALL_2020", "SC_SEC_GDF_2020", "SC_SEC_HDI_2020", "GR_AVG_GRN_2025", "odiac_norm")),
-#          Var2 = factor(Var2, levels = c(co_vars, "dist_to_coast_km", "EX_LEC_SHP_2025", "IN_CIS_ALL_2020", "SC_SEC_GDF_2020", "SC_SEC_HDI_2020", "GR_AVG_GRN_2025", "odiac_norm"))) %>%
-#   rename_co_vars("Var1") %>%
-#   rename_co_vars("Var2")
-# 
-# # Plot heatmap with labels
-# ggplot(cor_df, aes(x = Var1, y = Var2, fill = Correlation)) +
-#   geom_tile() +
-#   geom_text(aes(label = round(Correlation, 2)), color = "black", size = 3) +
-#   scale_fill_gradient2(low = "blue", high = "red", mid = "white",
-#                        midpoint = 0, limit = c(-1, 1), name = "Correlation") +
-#   theme_SM() +
-#   theme(axis.title = element_blank(),
-#         legend.direction = "horizontal",
-#         legend.title = element_text(),
-#         ) +
-#   coord_fixed()
-# 
-
+# fig3x
+# ggsave(fig3x, file = "plots/fig2x.pdf", height = 8, width = 10)
 
 
 ################################################################################
@@ -893,7 +722,7 @@ desc_geo_exlc <- desc_geo %>%
     main_mixed = ifelse(mean_prob < .65*median(mean_prob), "mixed", "main type"),
   )
 table(desc_geo_exlc$cluster_name, desc_geo_exlc$main_mixed)
-
+sum(desc_geo_exlc$main_mixed == "mixed")/nrow(desc_geo_exlc)
 
 write.csv(as.data.frame(desc_geo_exlc) %>% 
             select(ID_UC_G0, GC_UCN_MAI_2025, cluster_name, main_mixed),
@@ -1165,32 +994,6 @@ df1 <- type_medians %>%
   ) %>% 
   select(name = cluster_name, var, diff)
 
-df2 <- region_medians %>%
-  left_join(global_medians, by="var") %>%
-  mutate(
-    diff = reg_med - global_med,      # real percentage-point shift
-    abs_diff = abs(diff)
-  ) %>% 
-  select(name = Region, var, diff)
-
-p_type_region_median_diffs <- df2 %>%
-  rename_co_vars("var") %>%
-  mutate(stat_type = ifelse(grepl("Type|mixed", name), "City type", "Region")) %>% 
-  mutate(var = factor(var, levels = co_vars_formatted),
-         name = factor(name, levels = rev(c(reg_vars_wg2,  levels(cluster_names$cluster_name), "mixed")))) %>%
-  ggplot(aes(var, name, fill = diff)) +
-  geom_tile(width=0.9, height=0.9) +
-  geom_text(aes(label = round(diff,0)), size = 3) +
-  scale_fill_gradient2() +
-  facet_grid(stat_type~., scales = "free_y", space = "free") +
-  theme_SM() +
-  theme(legend.position = "none", 
-        axis.title = element_blank()) + 
-  labs(x = "", y = "") 
-p_type_region_median_diffs
-ggsave(p_type_region_median_diffs, file = "plots/p_type_region_median_diffs.pdf", height = 6, width = 7)
-
-
 
 df3 <- type_region_medians %>%
   ungroup() %>% 
@@ -1380,7 +1183,7 @@ plot_cluster_region_matrix <- function(
     labs(
       x = "",
       y = "",
-      title = title %||% ifelse(value == "share", "Percentage of cities", "Number of cities")
+      title = title %||% ifelse(value == "share", "Percentage of cities", "Number of urban centres")
     ) +
     geom_hline(yintercept = row_line, color = "grey20", size = 0.6) +
     facet_wrap(~Region, scales = "free_x", nrow = 1) +
@@ -1399,7 +1202,7 @@ plot_cluster_region_matrix <- function(
 p_percentage_type_region <- plot_cluster_region_matrix(
   data = desc_geo_exlc,
   value = "share",
-  title = "Percentage of cities",
+  title = "Percentage of urban centres",
   add_row_totals = FALSE
 )
 p_percentage_type_region
@@ -1407,16 +1210,16 @@ p_percentage_type_region
 p_n_type_region <- plot_cluster_region_matrix(
   data = desc_geo_exlc,
   value = "n",
-  title = "Absolute number of cities",
+  title = "Absolute number of urban centres",
   add_row_totals = FALSE
 )
 p_n_type_region
 
 
 fig2 <- ggarrange(
-  ggarrange(fig2_reg, # fig2_type, 
+  ggarrange(fig2_reg, # fig3_type, 
             labels = c("a",  ""), nrow = 1), 
-  ggarrange(p_percentage_type_region, p_n_type_region, labels = c("c", "d"), nrow = 2), 
+  ggarrange(p_percentage_type_region, p_n_type_region, labels = c("b", "c"), nrow = 2), 
   labels = c("", ""), nrow = 2, heights = c(1,1))
 
 ggsave(fig2, file = "plots/fig2.pdf", width = 10, height = 12)
@@ -1573,7 +1376,7 @@ p3 <- make_map(desc_geo_exlc, "Type 3")
 p4 <- make_map(desc_geo_exlc, "Type 4")
 
 base <- plot_grid(p1, p2, p3, p4, ncol = 1, align = "v")
-title <- ggdraw() + draw_label("Four main city types")
+title <- ggdraw() + draw_label("Four main types of urban centres")
 base <- plot_grid(title, base, ncol=1, rel_heights=c(0.03, 1)) 
 
 fig1_bc <- ggarrange(p_attr_cluster_bar, 
@@ -1603,27 +1406,6 @@ test_assign_probs_secondary_type <- clust_probs %>%
   theme(legend.position = "bottom")
 test_assign_probs_secondary_type
 ggsave(test_assign_probs_secondary_type, file = "plots/test_assign_probs_secondary_type.pdf", width = 10, height = 10)
-
-
-test_region_asia <- desc_geo %>% 
-  filter(Region == "Asia") %>% 
-  as.data.frame() %>% 
-  group_by(cluster_name, GC_CNT_GAD_2025) %>% 
-  summarise(n = n()) %>% 
-  group_by(GC_CNT_GAD_2025) %>% 
-  mutate(share = n/sum(n)) %>% 
-  ggplot(aes(GC_CNT_GAD_2025, share, fill = cluster_name)) + 
-  geom_col(position = "stack", width = .4, col = "black", size = .2) +
-  geom_text(aes(label = paste0(round(share * 100, 0), "%")),
-            position = position_stacknudge(x = .22, vjust = 0.5), size = 3, hjust = 0) +
-  scale_fill_manual(values = c(
-    "Type 1" = "#E41A1C",
-    "Type 2" = "#377EB8",
-    "Type 3" = "#4DAF4A",
-    "Type 4" = "#984EA3")) +
-  theme_SM() + 
-  theme(legend.position = "bottom")
-ggsave(test_region_asia, file = "plots/test_region_asia.pdf", width = 20, height = 5)
 
 
 clust_probs %>% 
@@ -1668,30 +1450,29 @@ clust_probs %>%
 ################################################################################
 # distributions by types
 ################################################################################
-
-# pick your percentiles
-lower_p <- 0.0025   
-upper_p <- 0.9975  
-
-facet_limits <- box_plot_add_covs_dat %>%
-  group_by(variable) %>%
-  summarize(
-    ymin = quantile(normalized_value, lower_p, na.rm = TRUE),
-    ymax = quantile(normalized_value, upper_p, na.rm = TRUE)
-  )
-facet_limits
-
-y_scales <- lapply(seq_len(nrow(facet_limits)), function(i) {
-  scale_y_continuous(limits = c(facet_limits$ymin[i], facet_limits$ymax[i]))
-})
-
-
-
+# 
+# # pick your percentiles
+# lower_p <- 0.0025   
+# upper_p <- 0.9975  
+# 
+# facet_limits <- box_plot_add_covs_dat %>%
+#   group_by(variable) %>%
+#   summarize(
+#     ymin = quantile(normalized_value, lower_p, na.rm = TRUE),
+#     ymax = quantile(normalized_value, upper_p, na.rm = TRUE)
+#   )
+# facet_limits
+# 
+# y_scales <- lapply(seq_len(nrow(facet_limits)), function(i) {
+#   scale_y_continuous(limits = c(facet_limits$ymin[i], facet_limits$ymax[i]))
+# })
+# 
+# 
 # Compute means by cluster and variable
-means_df <- box_plot_add_covs_dat %>%
-  group_by(clustering, cluster_name, variable) %>%
-  summarise(mean_val = mean(normalized_value, na.rm = TRUE), .groups = "drop") 
-
+# means_df <- box_plot_add_covs_dat %>%
+#   group_by(clustering, cluster_name, variable) %>%
+#   summarise(mean_val = mean(normalized_value, na.rm = TRUE), .groups = "drop") 
+# 
 # scales <- list(
 #   # Here you have to specify all the scales, one for each facet row in your case
 #   scale_y_continuous(limits = c(0, 10)),
@@ -1699,61 +1480,61 @@ means_df <- box_plot_add_covs_dat %>%
 #   scale_y_continuous(limits = c(0, 10)),
 #   scale_y_continuous(limits = c(-2, 17))
 # )
-
+# 
 # show_legend <- cluster == "Mega all in"
-
-p_box_characteristics <- box_plot_add_covs_dat %>% 
-  ggplot(aes(x = cluster_name, y = normalized_value)) +
-  geom_hline(yintercept = 1, lty = 2) +
-  geom_violin(alpha = 0.5, color = NA, scale = "width", aes(fill = cluster_name), trim = TRUE) +
-  geom_boxplot(width = 0.15, outlier.size = 0.5, color = "grey", outliers = F, aes(fill = cluster_name)) +
-  scale_fill_manual(values = c(
-    "Type 1" = "#E41A1C",
-    "Type 2" = "#377EB8",
-    "Type 3" = "#4DAF4A",
-    "Type 4" = "#984EA3")) +
-  geom_point(
-    data = means_df,
-    aes(x = cluster_name, y = mean_val, shape = "Mean value by type"),
-    size = 2, fill = "darkred", color = "black", inherit.aes = FALSE
-  ) +
-  geom_label(
-    data = means_df,
-    aes(x = cluster_name, y = mean_val, label = round(mean_val, 2)),
-    vjust = -0.3, size = 2.2, fill = "white", color = "black",      # color of the label text and border
-    label.size = 0, alpha = 0.7, inherit.aes = FALSE
-  ) + 
-  scale_shape_manual(values = c("Mean value by type" = 21), name = "") +
-  facet_wrap(.~variable, scales = "free") +
-  ggh4x::facetted_pos_scales(
-    y = y_scales
-  ) +
-  coord_flip() +
-  theme_SM() +
-  theme(
-    axis.text.x = element_text(angle = 25, hjust = 1),
-    legend.position = c(.85,.1),
-    legend.justification = "left",
-    legend.box.just = "left", 
-    legend.box.background = element_rect(color = "grey", size = 0.2),
-    legend.box.margin = margin(rep(2, 4)),
-    legend.background = element_blank(),
-    legend.spacing.y = unit(0.01, "lines"),
-    legend.box = "vertical",
-    legend.direction = "vertical",
-    axis.text = element_text(size = 12),
-    axis.title = element_text(size = 12),
-    strip.text = element_text(size = 12),
-    plot.margin = margin(c(-6,3,-2,3), "cm")
-  ) +
-  labs(
-    x = "",
-    y = "Normalized value",
-    title = ""
-  ) + 
-  guides(fill=guide_legend(ncol=2))
-p_box_characteristics
-ggsave(p_box_characteristics, file = "plots/p_box_characteristics.pdf", height = 7, width = 10)
+# 
+# p_box_characteristics <- box_plot_add_covs_dat %>% 
+#   ggplot(aes(x = cluster_name, y = normalized_value)) +
+#   geom_hline(yintercept = 1, lty = 2) +
+#   geom_violin(alpha = 0.5, color = NA, scale = "width", aes(fill = cluster_name), trim = TRUE) +
+#   geom_boxplot(width = 0.15, outlier.size = 0.5, color = "grey", outliers = F, aes(fill = cluster_name)) +
+#   scale_fill_manual(values = c(
+#     "Type 1" = "#E41A1C",
+#     "Type 2" = "#377EB8",
+#     "Type 3" = "#4DAF4A",
+#     "Type 4" = "#984EA3")) +
+#   geom_point(
+#     data = means_df,
+#     aes(x = cluster_name, y = mean_val, shape = "Mean value by type"),
+#     size = 2, fill = "darkred", color = "black", inherit.aes = FALSE
+#   ) +
+#   geom_label(
+#     data = means_df,
+#     aes(x = cluster_name, y = mean_val, label = round(mean_val, 2)),
+#     vjust = -0.3, size = 2.2, fill = "white", color = "black",      # color of the label text and border
+#     label.size = 0, alpha = 0.7, inherit.aes = FALSE
+#   ) + 
+#   scale_shape_manual(values = c("Mean value by type" = 21), name = "") +
+#   facet_wrap(.~variable, scales = "free") +
+#   ggh4x::facetted_pos_scales(
+#     y = y_scales
+#   ) +
+#   coord_flip() +
+#   theme_SM() +
+#   theme(
+#     axis.text.x = element_text(angle = 25, hjust = 1),
+#     legend.position = c(.85,.1),
+#     legend.justification = "left",
+#     legend.box.just = "left", 
+#     legend.box.background = element_rect(color = "grey", size = 0.2),
+#     legend.box.margin = margin(rep(2, 4)),
+#     legend.background = element_blank(),
+#     legend.spacing.y = unit(0.01, "lines"),
+#     legend.box = "vertical",
+#     legend.direction = "vertical",
+#     axis.text = element_text(size = 12),
+#     axis.title = element_text(size = 12),
+#     strip.text = element_text(size = 12),
+#     plot.margin = margin(c(-6,3,-2,3), "cm")
+#   ) +
+#   labs(
+#     x = "",
+#     y = "Normalized value",
+#     title = ""
+#   ) + 
+#   guides(fill=guide_legend(ncol=2))
+# p_box_characteristics
+# ggsave(p_box_characteristics, file = "plots/p_box_characteristics.pdf", height = 7, width = 10)
 
 ##################################################################
 # examples
@@ -1967,7 +1748,7 @@ plot_multiple_cities(
 
 # import solutions
 case_ex <- read.csv("data/case_study_solutions/export-5.csv") %>% as_tibble()
-clim_sol <- readxl::read_xlsx("data/climate_solutions_typology/climate_solution_typology_long_2.xlsx") %>% as_tibble()
+clim_sol <- readxl::read_xlsx("data/climate_solutions_typology/climate_solution_typology_long_3.xlsx") %>% as_tibble()
 
 solution_cols <- colnames(case_ex)[grepl("sol", colnames(case_ex))]
 
@@ -1980,7 +1761,7 @@ case_ex <- case_ex %>%
   select(openalex_id, solution_id, value, city_id) %>% 
   filter(value !=0) %>% 
   mutate(solution_id = as.numeric(gsub("sol.", "", solution_id, fixed = T))) %>% 
-  left_join(clim_sol %>% select(`Services/Provisions`, solution_type, solution_id, solution_name, wg_ipcc), by = "solution_id") %>% 
+  left_join(clim_sol %>% select(`Services/Provisions`, solution_type, solution_id, solution_name_merged, wg_ipcc), by = "solution_id") %>% 
   left_join(ghsl %>% as.data.frame() %>% select(ID_UC_G0, GC_UCN_MAI_2025, GC_CNT_GAD_2025), by = c("city_id" = "ID_UC_G0")) %>% 
   rename(city_name = GC_UCN_MAI_2025, country = GC_CNT_GAD_2025) %>% 
   filter(city_name %in% city_names) %>% 
@@ -1989,6 +1770,11 @@ case_ex <- case_ex %>%
               arrange(-mean_prob) %>% 
               slice(1), by = c("city_id" = "GHS_urban_area_id")) %>% 
   filter(!is.na(solution_type)) 
+
+# 
+# clim_sol <- case_ex %>% 
+#   group_by(`Services/Provisions`, solution_type, wg_ipcc) %>% 
+#   filter(!duplicated(solution_name_merged))
 
 
 examples_dat <- ghsl %>%
@@ -2090,7 +1876,7 @@ examples_dat_learning_teaching <- bind_rows(
     fill_state = paste(cluster_name, learning, sep = "_")
   )
 
-fig4 <- ggplot() +
+fig5 <- ggplot() +
   geom_sf(data = world %>% st_union(), fill = "grey95", color = NA) +
   
   geom_label_repel(
@@ -2134,7 +1920,7 @@ fig4 <- ggplot() +
   geom_sf(data = examples_dat_teaching,
           aes(col = cluster_name),
           size = 6, alpha = 0.9) + 
-  scale_color_manual("Representative case study\nexamples; numbers indicate\nclimate solutions",
+  scale_color_manual("Representative case study\nexamples; numbers indicate\nmitigation and adaptation\noptions",
                      values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"),
                      guide = guide_legend(order = 2)) +
   
@@ -2159,7 +1945,7 @@ fig4 <- ggplot() +
   geom_sf(data = examples_dat_learning,
           aes(col = cluster_name),
           size = 2, alpha = 0.2, inherit.aes = F) +
-  scale_color_manual("Similar cities with\ntransfer-learning potential",
+  scale_color_manual("Similar urban centres\nwith learning potential",
                      values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"),
                      guide = guide_legend(order = 1)) +
   
@@ -2195,8 +1981,8 @@ fig4 <- ggplot() +
     plot.margin = margin(rep(-1, 4)),
   )
 
-fig4
-ggsave(fig4, file = "plots/fig4.pdf", height = 4.5, width = 10)
+fig5
+ggsave(fig5, file = "plots/fig5.pdf", height = 4.5, width = 10)
 
 
 figA6 <- case_ex %>%
@@ -2222,7 +2008,7 @@ ggsave(figA6, file = "plots/figA6.pdf", width = 5, height = 5)
 
 
 case_ex <- case_ex %>%
-  mutate(solution_short = sapply(solution_name, function(x) {
+  mutate(solution_short = sapply(solution_name_merged, function(x) {
     if (nchar(x) <= 37) return(x)
     
     words <- str_split(x, " ")[[1]]
@@ -2253,27 +2039,32 @@ res_long <- res_long %>%
   mutate(solution_short = ifelse(grepl("AI-based", solution_short), "Highly accessible compact urban\nform and transit networks", solution_short)) %>% 
   mutate(`Services/Provisions` = gsub(" \\([0-9]\\)", "", `Services/Provisions`),
          `Services/Provisions` = str_trim(`Services/Provisions`),
-         `Services/Provisions` = ifelse(`Services/Provisions` == "Thermal comfort and Heat stress management", "Heat &\nthermal\nmanagement", `Services/Provisions`),
+         `Services/Provisions` = ifelse(`Services/Provisions` == "Thermal comfort (heat stress)", "Heat &\nthermal\nmanagement", `Services/Provisions`),
          `Services/Provisions` = ifelse(`Services/Provisions` == "Food provisioning systems", "Food", `Services/Provisions`),
-         `Services/Provisions` = ifelse(`Services/Provisions` == "Disaster and risk management", "Disaster\n& risk\nmanagement", `Services/Provisions`),
+         `Services/Provisions` = ifelse(`Services/Provisions` == "Social protection", "Social\nprotection", `Services/Provisions`),
          `Services/Provisions` = ifelse(`Services/Provisions` == "Carbon dioxide removal", "Carbon\ndioxide\nremoval", `Services/Provisions`),
-         `Services/Provisions` = ifelse(`Services/Provisions` == "Waste management", "Waste", `Services/Provisions`),
+         `Services/Provisions` = ifelse(`Services/Provisions` == "Resource use (circular economy, waste reduction)", "Waste", `Services/Provisions`),
          `Services/Provisions` = factor(`Services/Provisions`, levels = c("Mobility", "Buildings", "Energy", "Heat &\nthermal\nmanagement",
-                                                                          "Food", "Water", "Waste", "Disaster\n& risk\nmanagement", 
+                                                                          "Food", "Water", "Waste", "Social\nprotection", 
                                                                           "Carbon\ndioxide\nremoval"))) %>% 
   mutate(solution_short = stri_trim(solution_short)) %>% 
   ungroup() 
 
 res_long <- res_long %>%
-  group_by(`Services/Provisions`, solution_short) %>% 
+  rename(`Mitigation and adaptation options` = `Services/Provisions`) %>% 
+  group_by(`Mitigation and adaptation options`, solution_short, city_name, cluster_name) %>% 
+  summarise(n_studies_solutions = sum(n_studies_solutions)) %>% 
+  group_by(`Mitigation and adaptation options`, solution_short) %>% 
   tidyr::complete(
     city_name = unique(.$city_name),
     cluster_name = unique(.$cluster_name),
     fill = list(n_studies_solutions = NA)
   ) %>% 
   filter(paste(cluster_name, city_name) %in% paste(case_ex$cluster_name, case_ex$city_name)) %>% 
-  mutate(col = ifelse(`Services/Provisions` %in% c("Mobility", "Buildings", "Energy", "Waste","Carbon dioxide\nremoval"), 1, 2)) %>% 
+  mutate(col = ifelse(`Mitigation and adaptation options` %in% c("Mobility", "Buildings", "Energy", "Waste", "Carbon dioxide\nremoval", "Heat &\nthermal\nmanagement"), 1, 2)) %>% 
   mutate(cluster_name = gsub(" ", "\n", cluster_name)) 
+
+
 
 
 # Function to create heatmap for a given column
@@ -2287,21 +2078,22 @@ plot_solution_heatmap <- function(res_long, col_value) {
     geom_text(aes(label = n_studies_solutions), color = "white", size = 3.5) +
     scale_fill_continuous(na.value=NA) + 
     facet_nested(
-      `Services/Provisions` ~ cluster_name,
+      `Mitigation and adaptation options` ~ cluster_name,
       scales = "free",
       space = "free",
       switch = "y"
     ) +
     coord_flip() +
     labs(
-      x = "Services/Provision", y = "", 
-      fill = "Number of climate solutions in the\ncase study examples"
+      x = "Mitigation and adaptation options", y = "", 
+      fill = "Number of climate change mitigation\nand adaptation options in the\ncase study examples"
     ) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
       panel.grid = element_blank(),
       strip.placement = "outside",
-      legend.position = "bottom",
+      legend.position = c(-.27,-.15),
+      legend.direction = "horizontal",
       legend.justification = "right",
       legend.title.position = "top",
       legend.title = element_text(size = 8),
@@ -2331,8 +2123,8 @@ p1 <- plot_solution_heatmap(res_long, 1)
 p2 <- plot_solution_heatmap(res_long, 2)
 
 # Combine plots
-fig5 <- ggarrange(p1 + theme(legend.position = "none"), p2)
-ggsave(fig5, file = "plots/fig5.pdf", height = 9, width = 10)
+fig6 <- ggarrange(p1 + theme(legend.position = "none"), p2 + theme(plot.margin = unit(c(0,0,3,.5), "cm")))
+ggsave(fig6, file = "plots/fig6.pdf", height = 7, width = 10)
 
 ################################################################################
 # additional descriptives
@@ -2379,159 +2171,159 @@ p_pop_and_city_share_cont <- ggarrange(
 ggsave("plots/p_pop_and_city_share_cont.pdf", p_pop_and_city_share_cont, height = 10, width = 8)
 
 
-################################################################################
-# evidence growth by group
-################################################################################
-
-clust_with_topics <- clust %>%
-  left_join(clean_places, by = c("GHS_urban_area_id" = "city_id")) %>%
-  left_join(oa %>% select(id, abstract, publication_year), by = "id") %>%
-  as_tibble()
-
-# Assign IPCC phases
-data_phase <- clust_with_topics %>%
-  mutate(
-    publication_year = as.numeric(publication_year),
-    phase = case_when(
-      publication_year < 1990 ~ "AR1",
-      publication_year > 1990 & publication_year <= 1995 ~ "AR2",
-      publication_year > 1995 & publication_year <= 2001 ~ "AR3",
-      publication_year > 2001 & publication_year <= 2007 ~ "AR4",
-      publication_year > 2007 & publication_year <= 2014 ~ "AR5",
-      publication_year > 2014 & publication_year <= 2022 ~ "AR6"
-    )
-  ) 
-
-# Aggregate: n_studies per phase per cluster and Region
-growth_by_phase <- data_phase %>%
-  filter(!is.na(phase)) %>%
-  group_by(phase, cluster_name, Region) %>%
-  summarise(n_studies = n(), .groups = "drop") %>%
-  mutate(phase = factor(phase, levels = c("AR1", "AR2", "AR3", "AR4", "AR5", "AR6"))) %>%
-  arrange(cluster_name, Region, phase) %>%
-  group_by(cluster_name, Region) %>%
-  mutate(
-    baseline = first(n_studies),  # for normalized growth
-    norm_growth = n_studies / baseline
-  ) 
-
-growth_by_phase_anno <- growth_by_phase %>% 
-  group_by(cluster_name, phase) %>% 
-  summarise(n_studies = sum(n_studies)) %>% 
-  mutate(n_studies_lag = lag(n_studies),
-         pct_growth = round(100 * (n_studies - n_studies_lag) / n_studies_lag, 1))
-
-
-# Add midpoint year of each phase for plotting
-phase_years <- tibble(
-  phase = c("AR1", "AR2", "AR3", "AR4", "AR5", "AR6"),
-  year = c(1990, 1993, 1998, 2004, 2011, 2018)
-)
-
-growth_by_phase_anno <- left_join(growth_by_phase_anno, phase_years, by = "phase")
-growth_by_phase <- left_join(growth_by_phase, phase_years, by = "phase")
-
-# Create annotation labels only for phases with lag
-annotations <- growth_by_phase_anno %>%
-  filter(!is.na(pct_growth)) %>%
-  mutate(
-    label = paste0(pct_growth, "%"),
-    y = 130  
-  )
-
-# Final plot: normalized growth + annotations with phase-to-phase growth
-p_g_rel <- ggplot(growth_by_phase, aes(x = year, y = norm_growth, color = Region, group = Region)) +
-  geom_line(size = 1) +
-  geom_point(size = 1.2) +
-  facet_wrap(~cluster_name) +
-  geom_text(
-    data = annotations,
-    aes(x = year, y = y, label = label),
-    inherit.aes = FALSE,
-    vjust = -0.5, size = 2.5
-  ) +
-  geom_vline(
-    xintercept = c(1990.5, 1995.5, 2001.5, 2007.5, 2014.5, 2022.5),
-    color = "grey60", linetype = "dashed", size = 0.3
-  ) +
-  ylim(c(0, 150)) + xlim(c(1990,2025)) +
-  scale_color_npg() +
-  labs(
-    x = "Publication year",
-    y = "Relative growth (normalized to AR1)"
-  ) +
-  theme_SM() +
-  theme(
-    axis.text.x = element_text(angle = 0, hjust = 0),
-    legend.position = c(.35, .75)
-  ) +
-  guides(color = guide_legend(nrow = 3, byrow = TRUE))
-
-# Print
-p_g_rel
-
-# Step 1: Assign IPCC phase labels
-data_phase <- clust_with_topics %>%
-  mutate(
-    publication_year = as.numeric(publication_year),
-    phase = case_when(
-      publication_year < 1990 ~ "AR1",
-      publication_year > 1990 & publication_year <= 1995 ~ "AR2",
-      publication_year > 1995 & publication_year <= 2001 ~ "AR3",
-      publication_year > 2001 & publication_year <= 2007 ~ "AR4",
-      publication_year > 2007 & publication_year <= 2014 ~ "AR5",
-      publication_year > 2014 & publication_year <= 2022 ~ "AR6",
-      publication_year > 2022 ~ "AR7"
-    )
-  ) 
-
-# Step 2: Compute annotation totals per cluster and phase
-annotations <- data_phase %>%
-  filter(!is.na(phase)) %>%
-  group_by(phase, cluster_name) %>%
-  summarise(total = n(), .groups = "drop") %>%
-  mutate(
-    x = case_when(
-      phase == "AR1" ~ 1990,
-      phase == "AR2" ~ 1993,
-      phase == "AR3" ~ 1998,
-      phase == "AR4" ~ 2004,
-      phase == "AR5" ~ 2011,
-      phase == "AR6" ~ 2018,
-      phase == "AR7" ~ 2025
-    ),
-    y = 14000  
-  )
-
-# Step 3: Main plot with bars, vlines, and annotations
-p_g_abs <- data_phase %>%
-  filter(publication_year >= 1990) %>%
-  group_by(publication_year, cluster_name, Region) %>%
-  summarise(n_studies = n(), .groups = "drop") %>%
-  ggplot(aes(x = publication_year, y = n_studies, fill = Region)) +
-  geom_bar(stat = "identity", position = "stack", width = .8) +
-  facet_wrap(~cluster_name) +
-  # Add vertical IPCC lines (optional)
-  geom_vline(xintercept = c(1990.5, 1995.5, 2001.5, 2007.5, 2014.5, 2022.5), color = "grey60", linetype = "dashed", size = 0.3) +
-  # Add annotation counts
-  geom_text(
-    data = annotations,
-    aes(x = x, y = y, label = total),
-    inherit.aes = FALSE,
-    vjust = -0.5, size = 2.5
-  ) +
-  ylim(c(0, 15000)) +
-  scale_fill_npg() +
-  labs(x = "Publication year", y = "Studies") +
-  theme_SM() +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0),
-        legend.position = c(.35,.7)) +
-  guides(fill=guide_legend(nrow=3,byrow=TRUE))
-
-figA7 <- ggarrange(p_g_abs, p_g_rel, ncol = 1, labels = c("a", "b"), align = "v")
-ggsave(figA7, file = "plots/figA7.pdf", height = 9, width = 10) 
-
-
+# ################################################################################
+# # evidence growth by group
+# ################################################################################
+# 
+# clust_with_topics <- clust %>%
+#   left_join(clean_places, by = c("GHS_urban_area_id" = "city_id")) %>%
+#   left_join(oa %>% select(OpenAlex_article_id, abstract, publication_year), by = c("id" = "OpenAlex_article_id")) %>%
+#   as_tibble()
+# 
+# # Assign IPCC phases
+# data_phase <- clust_with_topics %>%
+#   mutate(
+#     publication_year = as.numeric(publication_year),
+#     phase = case_when(
+#       publication_year < 1990 ~ "AR1",
+#       publication_year > 1990 & publication_year <= 1995 ~ "AR2",
+#       publication_year > 1995 & publication_year <= 2001 ~ "AR3",
+#       publication_year > 2001 & publication_year <= 2007 ~ "AR4",
+#       publication_year > 2007 & publication_year <= 2014 ~ "AR5",
+#       publication_year > 2014 & publication_year <= 2022 ~ "AR6"
+#     )
+#   ) 
+# 
+# # Aggregate: n_studies per phase per cluster and Region
+# growth_by_phase <- data_phase %>%
+#   filter(!is.na(phase)) %>%
+#   group_by(phase, cluster_name, Region) %>%
+#   summarise(n_studies = n(), .groups = "drop") %>%
+#   mutate(phase = factor(phase, levels = c("AR1", "AR2", "AR3", "AR4", "AR5", "AR6"))) %>%
+#   arrange(cluster_name, Region, phase) %>%
+#   group_by(cluster_name, Region) %>%
+#   mutate(
+#     baseline = first(n_studies),  # for normalized growth
+#     norm_growth = n_studies / baseline
+#   ) 
+# 
+# growth_by_phase_anno <- growth_by_phase %>% 
+#   group_by(cluster_name, phase) %>% 
+#   summarise(n_studies = sum(n_studies)) %>% 
+#   mutate(n_studies_lag = lag(n_studies),
+#          pct_growth = round(100 * (n_studies - n_studies_lag) / n_studies_lag, 1))
+# 
+# 
+# # Add midpoint year of each phase for plotting
+# phase_years <- tibble(
+#   phase = c("AR1", "AR2", "AR3", "AR4", "AR5", "AR6"),
+#   year = c(1990, 1993, 1998, 2004, 2011, 2018)
+# )
+# 
+# growth_by_phase_anno <- left_join(growth_by_phase_anno, phase_years, by = "phase")
+# growth_by_phase <- left_join(growth_by_phase, phase_years, by = "phase")
+# 
+# # Create annotation labels only for phases with lag
+# annotations <- growth_by_phase_anno %>%
+#   filter(!is.na(pct_growth)) %>%
+#   mutate(
+#     label = paste0(pct_growth, "%"),
+#     y = 130  
+#   )
+# 
+# # Final plot: normalized growth + annotations with phase-to-phase growth
+# p_g_rel <- ggplot(growth_by_phase, aes(x = year, y = norm_growth, color = Region, group = Region)) +
+#   geom_line(size = 1) +
+#   geom_point(size = 1.2) +
+#   facet_wrap(~cluster_name) +
+#   geom_text(
+#     data = annotations,
+#     aes(x = year, y = y, label = label),
+#     inherit.aes = FALSE,
+#     vjust = -0.5, size = 2.5
+#   ) +
+#   geom_vline(
+#     xintercept = c(1990.5, 1995.5, 2001.5, 2007.5, 2014.5, 2022.5),
+#     color = "grey60", linetype = "dashed", size = 0.3
+#   ) +
+#   ylim(c(0, 150)) + xlim(c(1990,2025)) +
+#   scale_color_npg() +
+#   labs(
+#     x = "Publication year",
+#     y = "Relative growth (normalized to AR1)"
+#   ) +
+#   theme_SM() +
+#   theme(
+#     axis.text.x = element_text(angle = 0, hjust = 0),
+#     legend.position = c(.35, .75)
+#   ) +
+#   guides(color = guide_legend(nrow = 3, byrow = TRUE))
+# 
+# # Print
+# p_g_rel
+# 
+# # Step 1: Assign IPCC phase labels
+# data_phase <- clust_with_topics %>%
+#   mutate(
+#     publication_year = as.numeric(publication_year),
+#     phase = case_when(
+#       publication_year < 1990 ~ "AR1",
+#       publication_year > 1990 & publication_year <= 1995 ~ "AR2",
+#       publication_year > 1995 & publication_year <= 2001 ~ "AR3",
+#       publication_year > 2001 & publication_year <= 2007 ~ "AR4",
+#       publication_year > 2007 & publication_year <= 2014 ~ "AR5",
+#       publication_year > 2014 & publication_year <= 2022 ~ "AR6",
+#       publication_year > 2022 ~ "AR7"
+#     )
+#   ) 
+# 
+# # Step 2: Compute annotation totals per cluster and phase
+# annotations <- data_phase %>%
+#   filter(!is.na(phase)) %>%
+#   group_by(phase, cluster_name) %>%
+#   summarise(total = n(), .groups = "drop") %>%
+#   mutate(
+#     x = case_when(
+#       phase == "AR1" ~ 1990,
+#       phase == "AR2" ~ 1993,
+#       phase == "AR3" ~ 1998,
+#       phase == "AR4" ~ 2004,
+#       phase == "AR5" ~ 2011,
+#       phase == "AR6" ~ 2018,
+#       phase == "AR7" ~ 2025
+#     ),
+#     y = 14000  
+#   )
+# 
+# # Step 3: Main plot with bars, vlines, and annotations
+# p_g_abs <- data_phase %>%
+#   filter(publication_year >= 1990) %>%
+#   group_by(publication_year, cluster_name, Region) %>%
+#   summarise(n_studies = n(), .groups = "drop") %>%
+#   ggplot(aes(x = publication_year, y = n_studies, fill = Region)) +
+#   geom_bar(stat = "identity", position = "stack", width = .8) +
+#   facet_wrap(~cluster_name) +
+#   # Add vertical IPCC lines (optional)
+#   geom_vline(xintercept = c(1990.5, 1995.5, 2001.5, 2007.5, 2014.5, 2022.5), color = "grey60", linetype = "dashed", size = 0.3) +
+#   # Add annotation counts
+#   geom_text(
+#     data = annotations,
+#     aes(x = x, y = y, label = total),
+#     inherit.aes = FALSE,
+#     vjust = -0.5, size = 2.5
+#   ) +
+#   ylim(c(0, 15000)) +
+#   scale_fill_npg() +
+#   labs(x = "Publication year", y = "Studies") +
+#   theme_SM() +
+#   theme(axis.text.x = element_text(angle = 0, hjust = 0),
+#         legend.position = c(.35,.7)) +
+#   guides(fill=guide_legend(nrow=3,byrow=TRUE))
+# 
+# p_growth <- ggarrange(p_g_abs, p_g_rel, ncol = 1, labels = c("a", "b"), align = "v")
+# ggsave(p_growth, file = "plots/p_growth.pdf", height = 9, width = 10) 
+# 
+# 
 ################################################################################
 # Cities per cluster with and without research
 ################################################################################
@@ -2617,9 +2409,10 @@ p_cities_per_cluster_n <- clust %>%
     legend.position = c(0.9,.05),
     axis.title = element_blank(),
     legend.key.size = unit(0.4, "lines"),
-    axis.text.x = element_text(angle = 0, hjust = 0.5)
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    plot.title.position = "plot"
   ) +
-  labs(x = "", y = "",  subtitle = "Number of cities")
+  labs(x = "", y = "",  subtitle = "Number of urban centres")
 p_cities_per_cluster_n
 
 ################################################################################
@@ -2640,9 +2433,10 @@ p_n_studies <- clust %>%
     legend.title = element_text(),
     legend.position = "none",
     axis.title = element_blank(),
-    axis.text.x = element_text(angle = 0, hjust = .5)
+    axis.text.x = element_text(angle = 0, hjust = .5),
+    plot.title.position = "plot"
   ) +
-  labs(x = "", y = "", subtitle = "Total number of cases studied")
+  labs(x = "", y = "", subtitle = "Total urban centres studied")
 
 
 ################################################################################
@@ -2802,7 +2596,7 @@ p_similarity_map_all <- hexa_data %>%
   annotate(
     "label",
     x = -Inf, y = Inf,
-    label = "Similarity to all cities",
+    label = "Similarity to all urban centres",
     hjust = -0.1, vjust = 1.2,
     size = 3.5,
     fill = "white",
@@ -2834,7 +2628,7 @@ p_similarity_map_with_studies <- hexa_data %>%
   annotate(
     "label",
     x = -Inf, y = Inf,
-    label = "Similarity to cities with studies",
+    label = "Similarity to urban centres with studies",
     hjust = -0.1, vjust = 1.2,
     size = 3.5,
     fill = "white",
@@ -2873,9 +2667,10 @@ similarity_by_type_with_studies <- co_mat %>%
     legend.title = element_text(),
     legend.position = "none",
     axis.title = element_blank(),
-    axis.text.x = element_text(angle = 0, hjust = .5)
+    axis.text.x = element_text(angle = 0, hjust = .5),
+    plot.title.position = "plot"
   ) +
-  labs(x = "", y = "", subtitle = "Similarity to cities with studies")
+  labs(x = "", y = "", subtitle = "Similarity to urban centres with studies")
 similarity_by_type_with_studies
 
 similarity_by_type_all <- co_mat %>%
@@ -2891,9 +2686,10 @@ similarity_by_type_all <- co_mat %>%
     legend.title = element_text(),
     legend.position = "none",
     axis.title = element_blank(),
-    axis.text.x = element_text(angle = 0, hjust = .5)
+    axis.text.x = element_text(angle = 0, hjust = .5),
+    plot.title.position = "plot"
   ) +
-  labs(x = "", y = "", subtitle = "Similarity to all cities")
+  labs(x = "", y = "", subtitle = "Similarity to all urban centres")
 similarity_by_type_all
 
 ################################################################################
@@ -2924,7 +2720,7 @@ p_types_as_dots_with_research <- ggplot() +
   annotate(
     "label",
     x = -Inf, y = Inf,
-    label = "Research coverage of global cities by type",
+    label = "Case study coverage of urban centres by type",
     hjust = -0.2, vjust = 1.7,
     size = 3.5,
     fill = "white",
@@ -2932,7 +2728,7 @@ p_types_as_dots_with_research <- ggplot() +
   ) + 
   theme_SM() +
   labs(
-    y = "", x = "", col = "City type", size = "Number of studies"
+    y = "", x = "", col = "Urban centre type", size = "Number of studies"
   ) +
   guides(color = guide_legend(order = 1), size = guide_legend(order = 2)) +
   theme(
@@ -2965,7 +2761,7 @@ p_types_as_dots_without_research <- ggplot() +
   annotate(
     "label",
     x = -Inf, y = Inf,
-    label = "Cities by type not covered by any studies",
+    label = "Urban centres by type not covered by any studies",
     hjust = -0.1, vjust = 1.2,
     size = 3.5,
     fill = "white",
@@ -3039,14 +2835,14 @@ p_count_without_research <- ggplot() +
   annotate(
     "label",
     x = -Inf, y = Inf,
-    label = "Count of cities not covered by any studies",
+    label = "Count of urban centres not covered by any study",
     hjust = -0.1, vjust = 1.2,
     size = 3.5,
     fill = "white",
     label.size = 0.3
   ) +
   theme_SM() +
-  labs(y = "", x = "", fill = "Number of cities without research") +
+  labs(y = "", x = "", fill = "Number of urban centres without research") +
   theme(
     legend.justification = "center",
     legend.direction = "horizontal",
@@ -3062,33 +2858,35 @@ p_count_without_research <- ggplot() +
   )
 
 ################################################################################
-# Combine plots into Figure 2
+# Combine plots into Figure 4
 ################################################################################
 
-fig3bcde <- ggarrange(
+fig4bcde <- ggarrange(
   p_similarity_map_all, p_similarity_map_with_studies,
   p_types_as_dots_without_research + theme(legend.position = "none"), 
   p_count_without_research,
   labels = c("b", "c", "d", "e")
 )
 
-fig3abcde <- ggarrange(
+fig4abcde <- ggarrange(
   p_types_as_dots_with_research,
-  fig3bcde,
+  fig4bcde,
   labels = c("a", ""),
   ncol = 1,
   heights = c(1, 1)
 )
 
-fig3fgh <- ggarrange(
+fig4fgh <- ggarrange(
   p_n_studies + theme(text = element_text(size = 9)),
   similarity_by_type_all + theme(text = element_text(size = 9)),
   similarity_by_type_with_studies + theme(text = element_text(size = 9)),
   p_cities_per_cluster_n + theme(text = element_text(size = 9)),
+  hjust = c(.5,.5,.5,.5),
   align = "h", labels = c("e", "f", "g", "h"),
   ncol = 1
 )
 
-fig3 <- ggarrange(fig3abcde, fig3fgh, labels = c("", ""), ncol = 2, widths = c(3.2, 1))
+fig4 <- ggarrange(fig4abcde, fig4fgh, labels = c("", ""), ncol = 2, widths = c(3.2, 1))
 
-ggsave(fig3, file = "plots/fig3.pdf", height = 8, width = 10)
+ggsave(fig4, file = "plots/fig4.pdf", height = 8, width = 10)
+
