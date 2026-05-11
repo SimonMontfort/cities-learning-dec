@@ -97,26 +97,14 @@ co_vars <- c("GHS_population", "GHS_population_growth", "GHS_population_density"
              "GHS_old_pop", 'GHS_HDI', 'GHS_female_gender_index',
              "GHS_GDP_PPP", "GHS_GDP_PPP_growth", 
              "GHS_critical_infra", 
-             # "GHS_greenness_index", 
-             # "GHS_precipitation",
              "hdd",
              "cdd"
-             # "GHS_land_cons",
-             # , "GHS_hosp_pc"
-             # , "GHS_road_len"
-             # , "odiac_norm"
 )
 co_vars_formatted <- c("Population", "Population growth", "Population density", "Population density growth", 
                        "Young/old population", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
                        "Critical infrastructure", 
-                       # "Greenness", 
-                       # "Precipitation",
                        "Heating degree days", 
                        "Cooling degree days"
-                       # "Land consumption",
-                       # , "Hospitals p.c."
-                       # , "Road density"
-                       # , "Emissions p.c."
 )
 reg_vars <- c("NORTH-AMERICA", "SOUTH-AMERICA", "EUROPE", "AFRICA", "ASIA", "OCEANIA" , "SMALL ISLANDS")
 reg_vars_wg2 <- c("North America", "South America", "Europe", "Africa", "Asia", "Australasia", "Small Islands")
