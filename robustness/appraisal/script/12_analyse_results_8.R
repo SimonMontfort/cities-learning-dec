@@ -99,7 +99,7 @@ co_vars <- c("GHS_population", "GHS_population_growth", "GHS_population_density"
              "cdd"
 )
 co_vars_formatted <- c("Population", "Population growth", "Population density", "Population density growth", 
-                       "Young/old population", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
+                       "Old/young population", "HDI", "Gender index", "GDP PPP", "GDP PPP growth", 
                        "Critical infrastructure", 
                        "Heating degree days", 
                        "Cooling degree days"
@@ -181,7 +181,7 @@ rename_co_vars <- function(df, column) {
     "cdd" = "Cooling degree days",
     'GHS_HDI' = "HDI", 
     'GHS_female_gender_index' = "Gender index",
-    "GHS_old_pop" =  "Young/old population",
+    "GHS_old_pop" =  "Old/young population",
     "odiac_norm" = "CO2 emissions p.c."
   )
   
