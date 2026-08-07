@@ -1,0 +1,4 @@
+encoding_dim = 4
+l2_reg = 6.770866604848463e-05
+units1 = 96
+units2 = 32
