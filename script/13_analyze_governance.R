@@ -4,6 +4,7 @@ library(readxl)
 library(readr)
 library(ggplot2)
 library(patchwork)
+library(countrycode)
 
 # ── 0. Paths ──────────────────────────────────────────────────────────────────
 setwd("/Users/simon/Documents/repo/cities-learning-dec")
@@ -62,7 +63,7 @@ theme_SM <- function(){
 pal_type <- c(
   "Type 1" = "#E41A1C",
   "Type 2" = "#377EB8",
-  "Type 3" = "#4DAF4A",
+  "Type 3" = "#DAA520",
   "Type 4" = "#984EA3"
 )
 
@@ -107,40 +108,8 @@ ct_long <- country_type %>%
   mutate(iso3 = ifelse(country_name == "México", "MEX", iso3),
          iso3 = ifelse(country_name == "Kosovo", "XKX", iso3),)
 
-# ── OPTION 1 — Type-level aggregated bar + IQR ────────────────────────────────
-# Collapse to type medians with IQR bars. Loses country detail entirely.
-type_summary <- ct_long %>%
-  group_by(cluster_name, label) %>%
-  summarise(
-    median = median(value, na.rm = TRUE),
-    q25    = quantile(value, 0.25, na.rm = TRUE),
-    q75    = quantile(value, 0.75, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-pB <- ggplot(type_summary,
-             aes(x = cluster_name, y = median,
-                 fill = cluster_name)) +
-  geom_col(alpha = 0.8, width = 0.6, linewidth = .2, col = "black" ) +
-  geom_errorbar(aes(ymin = q25, ymax = q75), width = 0.2, linewidth = 0.5, col = "black") +
-  scale_fill_manual(values = pal_type) +
-  scale_colour_manual(values = pal_type) +
-  facet_wrap(~ label, scales = "free_y", nrow = 2) +
-  labs(
-    x       = NULL, y = NULL,
-    # title   = "Option B: Type-level median + IQR bar",
-    # subtitle = "Bar = median across country-type combinations; error bar = IQR",
-    # caption = "Unit of observation: country × type. National: single value per country. Urban: % network-member urban centres."
-  ) +
-  theme_SM() +
-  theme(legend.position = "none")
-
-ggsave(pB, filename = "plots/fig3.pdf", width = 10, height = 7, dpi = 150)
-# cat("Saved: plots/gov_option_B.png\n")
-
-# ── OPTION 2 — Boxplot on country-type unit ───────────────────────────────────
-# Boxplot but unit = country × type, not city. More honest than city-level.
-pC <- ggplot(ct_long,
+# ── boxplot on country-type unit ───────────────────────────────────
+fig3 <- ggplot(ct_long,
              aes(x = cluster_name, y = value,
                  fill = cluster_name)) +
   geom_boxplot(
@@ -150,13 +119,8 @@ pC <- ggplot(ct_long,
   scale_fill_manual(values = pal_type) +
   scale_colour_manual(values = pal_type) +
   facet_wrap(~ label, scales = "free_y", nrow = 2) +
-  labs(
-    x       = NULL, y = NULL,
-    # title   = "Option C: Boxplot on country-type unit",
-    # subtitle = "Unit of observation: country × type combination (not urban centre)",
-    # caption = "National indicators: single value per country. Urban: % network-member urban centres per country-type."
-  ) +
+  labs(x= NULL, y = NULL) +
   theme_SM() +
   theme(legend.position = "none")
 
-ggsave("plots/fig3_option_2.pdf", pC, width = 10, height = 5)
+ggsave("plots/fig3.pdf", fig3, width = 10, height = 5)

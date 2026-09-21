@@ -326,36 +326,6 @@ emmissions_box_dat <- emmissions_box_dat %>%
   ) %>%
   filter(odiac_norm >= lower_bound & odiac_norm <= upper_bound) %>%
   ungroup()
-# 
-# 
-# library(see)
-# 
-# p_emissions_box <- ggplot(emmissions_box_dat, aes(x = cluster_name, y = odiac_norm, fill = median_odiac)) +
-#   geom_hline(yintercept = median(median_data$median_odiac, na.rm = TRUE), lty = 3, col = "grey50") +
-#   geom_violinhalf(outliers = FALSE, trim = TRUE, 
-#                   side = "l",
-#                   alpha = 0.6, 
-#                   lwd = 0.2, 
-#                   flip = TRUE
-#   ) +
-#   geom_boxplot(outliers = FALSE, outlier.size = 0.5, alpha = 0.8, width = 0.3, na.rm = TRUE, lwd = 0.2, position = position_nudge(x = 0.15)) +
-#   scale_fill_gradient2(
-#     low = "#a0c4ff", mid = "white", high = "#FFADAD",
-#     midpoint = median(median_data$median_odiac, na.rm = TRUE),
-#     name = "Median Emissions"
-#   ) +
-#   labs(
-#     x = "",
-#     y = "Emissions p.c. (t CO₂ p.a.)"
-#   ) +
-#   # facet_wrap(~Region, nrow = 1) +
-#   theme_SM() +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1),
-#         legend.position = "none")
-# 
-# ggsave(p_emissions_box, file = "plots/p_emissions_box.pdf", width = 10, height = 5)
-
-
 
 # check
 ghsl_clean %>% 
@@ -510,7 +480,7 @@ fig2_reg <- df3 %>%
   scale_fill_manual(values = c(
     "Type 1" = "#E41A1C",
     "Type 2" = "#377EB8",
-    "Type 3" = "#4DAF4A",
+    "Type 3" = "#DAA520",
     "Type 4" = "#984EA3", 
     "mixed" = "grey")) +
   labs(
@@ -565,7 +535,7 @@ fig2_type <- df4 %>%
   scale_fill_manual(values = c(
     "Type 1" = "#E41A1C",
     "Type 2" = "#377EB8",
-    "Type 3" = "#4DAF4A",
+    "Type 3" = "#DAA520",
     "Type 4" = "#984EA3", 
     "mixed" = "grey")) +
   labs(
@@ -716,7 +686,7 @@ p_attr_cluster_bar <- df1 %>%
   scale_fill_manual(values = c(
     "Type 1" = "#E41A1C",
     "Type 2" = "#377EB8",
-    "Type 3" = "#4DAF4A",
+    "Type 3" = "#DAA520",
     "Type 4" = "#984EA3", 
     "mixed" = "white")) +
   geom_col_pattern(
@@ -775,7 +745,7 @@ test_region_thresh_prob <- desc_geo_exlc %>%
   scale_fill_manual(values = c(
     "Type 1" = "#E41A1C",
     "Type 2" = "#377EB8",
-    "Type 3" = "#4DAF4A",
+    "Type 3" = "#DAA520",
     "Type 4" = "#984EA3")) +
   theme_SM() +
   labs(x = "", y = "Percentage by region", title = "Type percentage by region") +
@@ -824,7 +794,7 @@ make_map <- function(df, type) {
     scale_color_manual(values = c(
       "Type 1" = "#E41A1C",
       "Type 2" = "#377EB8",
-      "Type 3" = "#4DAF4A",
+      "Type 3" = "#DAA520",
       "Type 4" = "#984EA3"),
       na.value = "grey30") +
     scale_size(range = c(.05,7), 
@@ -866,7 +836,7 @@ fig1_bc <- ggarrange(p_attr_cluster_bar,
                      ncol = 1)
 
 fig1 <- ggarrange(base, fig1_bc, labels = c("a", ""), widths = c(1.4,1))
-ggsave(fig1, file = "plots/figA7.pdf", width = 10, height = 10)
+ggsave(fig1, file = "plots/figA3.pdf", width = 10, height = 10)
 
 
 ################################################################################
@@ -929,7 +899,7 @@ p_cities_per_cluster_n <- clust %>%
     values = c(
       "Type 1" = "#E41A1C",
       "Type 2" = "#377EB8",
-      "Type 3" = "#4DAF4A",
+      "Type 3" = "#DAA520",
       "Type 4" = "#984EA3",
       "No research" = "#f2f2f0"
     ),
@@ -946,7 +916,7 @@ p_cities_per_cluster_n <- clust %>%
     breaks = "No research"
   ) + 
   coord_flip() +
-  scale_y_continuous(labels = label_number(suffix = "K", scale = 1e-3)) +
+  scale_y_continuous(labels = scales::label_number(suffix = "K", scale = 1e-3)) +
   theme_SM() +
   theme(
     legend.text = element_text(size = 5),
@@ -971,8 +941,8 @@ p_n_studies <- clust %>%
   ggplot(aes(x = cluster_name, y = n_studies, fill = cluster_name)) +
   geom_bar(stat = "identity", width = .5, col = "black", size = 0.1) +
   coord_flip() +
-  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
-  scale_y_continuous(labels = label_number(suffix = "K", scale = 1e-3)) +
+  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#DAA520", "#984EA3"))) +
+  scale_y_continuous(labels = scales::label_number(suffix = "K", scale = 1e-3)) +
   theme_SM() +
   theme(
     legend.title = element_text(),
@@ -1205,7 +1175,7 @@ similarity_by_type_with_studies <- co_mat %>%
   mutate(cluster_name = factor(cluster_name, levels = rev(levels(cluster_name)))) %>%
   ggplot(aes(x = cluster_name, y = similarity_mean, fill = cluster_name)) +
   geom_bar(stat = "identity", width = .5, col = "black", size = 0.1) +
-  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#DAA520", "#984EA3"))) +
   coord_flip() +
   theme_SM() +
   theme(
@@ -1224,7 +1194,7 @@ similarity_by_type_all <- co_mat %>%
   mutate(cluster_name = factor(cluster_name, levels = rev(levels(cluster_name)))) %>%
   ggplot(aes(x = cluster_name, y = similarity_mean, fill = cluster_name)) +
   geom_bar(stat = "identity", width = .5, col = "black", size = 0.1) +
-  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"))) +
+  scale_fill_manual(values = rev(c("#E41A1C", "#377EB8", "#DAA520", "#984EA3"))) +
   coord_flip() +
   theme_SM() +
   theme(
@@ -1260,7 +1230,7 @@ p_types_as_dots_with_research <- ggplot() +
     alpha = .5
   ) +
   scale_size_continuous(range = c(0.01, 5)) +
-  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")) +
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#DAA520", "#984EA3")) +
   geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
   annotate(
     "label",
@@ -1301,7 +1271,7 @@ p_types_as_dots_without_research <- ggplot() +
     aes(col = cluster_name),
     size = .01
   ) +
-  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3")) +
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#DAA520", "#984EA3")) +
   geom_sf(data = bb, col = "grey70", fill = "transparent", linewidth = .5) +
   annotate(
     "label",
@@ -1421,17 +1391,17 @@ fig4abcde <- ggarrange(
   heights = c(1, 1)
 )
 
-fig4fgh <- ggarrange(
+fig4fghi <- ggarrange(
   p_n_studies + theme(text = element_text(size = 9)),
   similarity_by_type_all + theme(text = element_text(size = 9)),
   similarity_by_type_with_studies + theme(text = element_text(size = 9)),
   p_cities_per_cluster_n + theme(text = element_text(size = 9)),
   hjust = c(.5,.5,.5,.5),
-  align = "h", labels = c("e", "f", "g", "h"),
+  align = "h", labels = c("f", "g", "h", "i"),
   ncol = 1
 )
 
-fig4 <- ggarrange(fig4abcde, fig4fgh, labels = c("", ""), ncol = 2, widths = c(3.2, 1))
+fig4 <- ggarrange(fig4abcde, fig4fghi, labels = c("", ""), ncol = 2, widths = c(3.2, 1))
 
-ggsave(fig4, file = "plots/figA8.pdf", height = 8, width = 10)
+ggsave(fig4, file = "plots/figA4.pdf", height = 8, width = 10)
 
