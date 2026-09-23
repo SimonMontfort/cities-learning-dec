@@ -797,6 +797,15 @@ make_map <- function(df, type) {
       "Type 3" = "#DAA520",
       "Type 4" = "#984EA3"),
       na.value = "grey30") +
+    annotate(
+      "label",
+      x = -Inf, y = Inf,
+      label = type,
+      hjust = -0.1, vjust = 1.2,
+      size = 3.5,
+      fill = "white",
+      label.size = 0.3
+    ) +
     scale_size(range = c(.05,7), 
                limits = c(global_min_pop, global_max_pop),
     ) +

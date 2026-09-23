@@ -800,6 +800,15 @@ make_map <- function(df, type) {
     scale_size(range = c(.05,7), 
                limits = c(global_min_pop, global_max_pop),
     ) +
+    annotate(
+      "label",
+      x = -Inf, y = Inf,
+      label = type,
+      hjust = -0.1, vjust = 1.2,
+      size = 3.5,
+      fill = "white",
+      label.size = 0.3
+    ) +
     labs(x ="", y="") +
     coord_sf(
       ylim = c(-6500000, 8650000),

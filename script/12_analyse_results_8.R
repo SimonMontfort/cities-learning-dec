@@ -1221,6 +1221,15 @@ make_map <- function(df, type) {
       "Type 3" = "#DAA520",
       "Type 4" = "#984EA3"),
       na.value = "grey30") +
+    annotate(
+      "label",
+      x = -Inf, y = Inf,
+      label = type,
+      hjust = -0.1, vjust = 1.2,
+      size = 3.5,
+      fill = "white",
+      label.size = 0.3
+    ) +
     scale_size(range = c(.05,7), 
                limits = c(global_min_pop, global_max_pop),
     ) +
@@ -1262,44 +1271,8 @@ fig1_bc <- ggarrange(p_attr_cluster_bar,
 fig1 <- ggarrange(base, fig1_bc, labels = c("a", ""), widths = c(1.4,1))
 ggsave(fig1, file = "plots/fig1.pdf", width = 10, height = 10)
 
-c1 <- plot_grid(
-  p1 + annotate(
-    "label",
-    x = -Inf, y = Inf,
-    label = "Type 1",
-    hjust = -1.3, vjust = 1.2,
-    size = 3.5,
-    fill = "white",
-    label.size = 0.3
-  ), 
-  p2 + annotate(
-    "label",
-    x = -Inf, y = Inf,
-    label = "Type 2",
-    hjust = -1.3, vjust = 1.2,
-    size = 3.5,
-    fill = "white",
-    label.size = 0.3
-  ), ncol = 1, align = "v")
-c2 <- plot_grid(
-  p3 + annotate(
-    "label",
-    x = -Inf, y = Inf,
-    label = "Type 3",
-    hjust = -1.3, vjust = 1.2,
-    size = 3.5,
-    fill = "white",
-    label.size = 0.3
-  ), 
-  p4 + annotate(
-    "label",
-    x = -Inf, y = Inf,
-    label = "Type 4",
-    hjust = -1.3, vjust = 1.2,
-    size = 3.5,
-    fill = "white",
-    label.size = 0.3
-  ), ncol = 1, align = "v")
+c1 <- plot_grid(p1, p2, ncol = 1, align = "v")
+c2 <- plot_grid(p3, p4, ncol = 1, align = "v")
 briefing <- ggarrange(c1,c2, ncol = 2, common.legend = T)
 
 title <- ggdraw() + draw_label("Four main types of urban centres")
